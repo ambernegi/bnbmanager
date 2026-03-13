@@ -1,7 +1,24 @@
 import type { MonthEntry } from "@/lib/bnb/types";
+import type { BookingItem, Region } from "@/lib/bnb/types";
 
 export const DEFAULT_CURRENCY = "INR";
 export const DEFAULT_LOCALE = "en-IN";
+export const DEFAULT_REGION: Region = "india";
+
+export function regionDefaults(region: Region): { currency: string; locale: string } {
+  switch (region) {
+    case "india":
+      return { currency: "INR", locale: "en-IN" };
+    case "us":
+      return { currency: "USD", locale: "en-US" };
+    case "europe":
+      return { currency: "EUR", locale: "en-IE" };
+    case "uk":
+      return { currency: "GBP", locale: "en-GB" };
+    default:
+      return { currency: DEFAULT_CURRENCY, locale: DEFAULT_LOCALE };
+  }
+}
 
 export function isValidMonthKey(value: string): boolean {
   // YYYY-MM where MM is 01-12
@@ -17,8 +34,10 @@ export function formatMonthLabel(monthKey: string): string {
 
 export function getCurrencyFractionDigits(locale: string, currency: string): number {
   // For most currencies this is 2 (INR, USD, EUR). Some currencies are 0 (JPY) or 3 (BHD).
-  return new Intl.NumberFormat(locale, { style: "currency", currency }).resolvedOptions()
-    .maximumFractionDigits;
+  return (
+    new Intl.NumberFormat(locale, { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits ?? 2
+  );
 }
 
 export function minorToMajor(minor: number, fractionDigits: number): number {
@@ -101,11 +120,20 @@ export function getMonthTotals(month: MonthEntry): {
   expensesCents: number;
   profitCents: number;
 } {
-  const expensesCents = month.expenses.reduce((sum, e) => sum + e.amountCents, 0);
-  const incomeCents =
-    month.properties && month.properties.length > 0
-      ? month.properties.reduce((sum, p) => sum + p.rentCents, 0)
-      : month.incomeCents;
-  return { incomeCents, expensesCents, profitCents: incomeCents - expensesCents };
+  const baseRentCostCents = month.properties?.reduce((sum, p) => sum + p.rentCents, 0) ?? 0;
+  const operatingCostCents = month.expenses.reduce((sum, e) => sum + e.amountCents, 0);
+  const totalCostCents = baseRentCostCents + operatingCostCents;
+  const revenueCents = (month.bookings ?? []).reduce(
+    (sum, b) => sum + b.pricePerNightCents * b.nights,
+    0,
+  );
+  // Keep field names for UI compatibility:
+  // - incomeCents => revenue
+  // - expensesCents => total costs
+  return { incomeCents: revenueCents, expensesCents: totalCostCents, profitCents: revenueCents - totalCostCents };
+}
+
+export function getBookingRevenueCents(b: BookingItem): number {
+  return b.pricePerNightCents * b.nights;
 }
 

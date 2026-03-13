@@ -6,12 +6,16 @@ import {
   addExpense,
   addProperty,
   addMonth,
+  addBooking,
   deleteExpense,
+  deleteBooking,
   deleteMonth,
   setNotes,
   setPropertyRent,
+  setPropertyListing,
+  setPropertyMeta,
   setPropertyTenure,
-  setSettings,
+  setRegion,
   updateExpense,
 } from "@/lib/bnb/mutations";
 import {
@@ -30,6 +34,10 @@ import { MetricCard } from "@/app/_components/ui/MetricCard";
 import { Sparkline } from "@/app/_components/ui/Sparkline";
 import { Toaster, useToasts } from "@/app/_components/ui/Toast";
 import { MoneyDrum } from "@/app/_components/ui/MoneyDrum";
+import { ListingIcon } from "@/app/_components/ui/ListingIcons";
+import { sanitizeExternalUrl } from "@/lib/bnb/url";
+import { buildReminders } from "@/lib/bnb/reminders";
+import { buildSummaryRows, type Period } from "@/lib/bnb/analysis";
 
 function Pill({
   children,
@@ -130,14 +138,34 @@ function Button({
 export function BnbManagerApp() {
   const { data, setData, loaded } = useBnbData();
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
-  const settings =
-    data.version === 3
-      ? data.settings
-      : data.version === 2
-        ? { ...data.settings, properties: [{ id: "prop_default", name: "Property 1" }] }
-        : { currency: "INR", locale: "en-IN", properties: [{ id: "prop_default", name: "Property 1" }] };
+  const settings: {
+    region?: "india" | "us" | "europe" | "uk";
+    currency: string;
+    locale: string;
+    properties: Property[];
+  } = (() => {
+    // `loadData()` migrates to the latest version, but keep a safe fallback.
+    if ("settings" in data && data.settings && typeof data.settings === "object") {
+      const s = data.settings as unknown as {
+        region?: "india" | "us" | "europe" | "uk";
+        currency?: unknown;
+        locale?: unknown;
+        properties?: unknown;
+      };
+      if (typeof s.currency === "string" && typeof s.locale === "string" && Array.isArray(s.properties)) {
+        return { region: s.region, currency: s.currency, locale: s.locale, properties: s.properties as Property[] };
+      }
+    }
+    return {
+      region: "india",
+      currency: "INR",
+      locale: "en-IN",
+      properties: [{ id: "prop_default", name: "Property 1", tenure: "owned", listings: {} }],
+    };
+  })();
   const moneyOpts = { currency: settings.currency, locale: settings.locale };
   const fractionDigits = getCurrencyFractionDigits(settings.locale, settings.currency);
+  const reminders = buildReminders(settings.properties);
   const monthsSorted = useMemo(() => {
     const months = [...data.months];
     months.sort((a, b) => (a.month < b.month ? 1 : a.month > b.month ? -1 : 0));
@@ -159,6 +187,10 @@ export function BnbManagerApp() {
     settings.properties[0]?.id ?? "prop_default",
   );
   const [newPropertyName, setNewPropertyName] = useState<string>("");
+  const [openListingsForPropertyId, setOpenListingsForPropertyId] = useState<string | null>(null);
+  const [view, setView] = useState<"tracker" | "analysis">("tracker");
+  const [analysisPeriod, setAnalysisPeriod] = useState<Period>("monthly");
+  const [analysisPropertyId, setAnalysisPropertyId] = useState<string>("all");
   const [expenseQuery, setExpenseQuery] = useState<string>("");
   const [expenseSort, setExpenseSort] = useState<"day" | "amount" | "recent">("day");
   const [confirm, setConfirm] = useState<
@@ -252,39 +284,54 @@ export function BnbManagerApp() {
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex rounded-xl ring-1 ring-inset ring-zinc-200 bg-white p-1 shadow-sm dark:ring-zinc-800 dark:bg-zinc-950">
+            <button
+              type="button"
+              onClick={() => setView("tracker")}
+              className={[
+                "h-9 rounded-lg px-3 text-sm font-medium",
+                view === "tracker"
+                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
+              ].join(" ")}
+            >
+              Tracker
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("analysis")}
+              className={[
+                "h-9 rounded-lg px-3 text-sm font-medium",
+                view === "analysis"
+                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
+              ].join(" ")}
+            >
+              Analysis
+            </button>
+          </div>
           <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <div className="grid gap-1">
-              <SmallLabel>Currency</SmallLabel>
+              <SmallLabel>Region</SmallLabel>
               <select
-                value={settings.currency}
-                onChange={(e) => commit(setSettings(data, { currency: e.target.value }))}
+                value={settings.region ?? "india"}
+                onChange={(e) => {
+                  const v = e.target.value as "india" | "us" | "europe" | "uk";
+                  commit(setRegion(data, v));
+                }}
                 className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
               >
-                {["INR", "USD", "EUR", "GBP", "AED"].map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+                <option value="india">India (INR)</option>
+                <option value="us">US (USD)</option>
+                <option value="europe">Europe (EUR)</option>
+                <option value="uk">UK (GBP)</option>
               </select>
             </div>
             <div className="grid gap-1">
-              <SmallLabel>Location / Locale</SmallLabel>
-              <select
-                value={settings.locale}
-                onChange={(e) => commit(setSettings(data, { locale: e.target.value }))}
-                className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-              >
-                {[
-                  { v: "en-IN", l: "India (en-IN)" },
-                  { v: "hi-IN", l: "India (hi-IN)" },
-                  { v: "en-US", l: "United States (en-US)" },
-                  { v: "en-GB", l: "United Kingdom (en-GB)" },
-                ].map((x) => (
-                  <option key={x.v} value={x.v}>
-                    {x.l}
-                  </option>
-                ))}
-              </select>
+              <SmallLabel>Currency</SmallLabel>
+              <div className="h-10 min-w-[84px] rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold leading-10 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+                {settings.currency}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -302,6 +349,53 @@ export function BnbManagerApp() {
         </div>
       </header>
 
+      {view === "tracker" && reminders.length > 0 ? (
+        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+              Reminders
+            </div>
+            <Pill tone="neutral">{reminders.length}</Pill>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {reminders.slice(0, 6).map((r) => (
+              <div
+                key={`${r.kind}:${r.propertyId}:${r.message}`}
+                className="flex items-start justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900/20"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-zinc-950 dark:text-zinc-50">
+                    {r.propertyName}
+                  </div>
+                  <div className="text-xs text-zinc-600 dark:text-zinc-400">{r.message}</div>
+                </div>
+                <Pill tone={r.severity === "bad" ? "bad" : r.severity === "warn" ? "neutral" : "neutral"}>
+                  {r.kind === "agreement" ? "Agreement" : "Rent"}
+                </Pill>
+              </div>
+            ))}
+            {reminders.length > 6 ? (
+              <div className="text-xs text-zinc-500 dark:text-zinc-500">
+                Showing 6 of {reminders.length}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {view === "analysis" ? (
+        <AnalysisPanel
+          data={data}
+          properties={settings.properties}
+          moneyOpts={moneyOpts}
+          period={analysisPeriod}
+          setPeriod={setAnalysisPeriod}
+          propertyId={analysisPropertyId}
+          setPropertyId={setAnalysisPropertyId}
+        />
+      ) : null}
+
+      {view === "tracker" ? (
       <div className="mt-6 grid gap-3 md:grid-cols-4">
         <MetricCard
           label={selected ? `Income • ${formatMonthLabel(selected.month)}` : "Income"}
@@ -340,7 +434,9 @@ export function BnbManagerApp() {
           </div>
         </div>
       </div>
+      ) : null}
 
+      {view === "tracker" ? (
       <div className="mt-6 grid gap-6 md:grid-cols-[320px_1fr]">
         <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex items-center justify-between">
@@ -466,18 +562,32 @@ export function BnbManagerApp() {
 
                     <div className="grid gap-3">
                       {settings.properties.map((p: Property) => {
-                        const rent =
-                          selected.properties?.find((x) => x.propertyId === p.id)?.rentCents ?? 0;
-                        const opCost = selected.expenses
+                        const baseRentCost =
+                          p.tenure === "rented"
+                            ? (selected.properties?.find((x) => x.propertyId === p.id)?.rentCents ??
+                              0)
+                            : 0;
+                        const operatingCost = selected.expenses
                           .filter((e) => (e.propertyId ?? settings.properties[0]?.id) === p.id)
                           .reduce((sum, e) => sum + e.amountCents, 0);
-                        const maxRent = Math.max(
+                        const revenue = (selected.bookings ?? [])
+                          .filter((b) => b.propertyId === p.id)
+                          .reduce((sum, b) => sum + b.pricePerNightCents * b.nights, 0);
+                        const totalCost = baseRentCost + operatingCost;
+                        const profit = revenue - totalCost;
+                        const maxCost = Math.max(
                           1,
-                          ...settings.properties.map(
-                            (pp) =>
-                              selected.properties?.find((x) => x.propertyId === pp.id)?.rentCents ??
-                              0,
-                          ),
+                          ...settings.properties.map((pp) => {
+                            const br =
+                              pp.tenure === "rented"
+                                ? (selected.properties?.find((x) => x.propertyId === pp.id)?.rentCents ??
+                                  0)
+                                : 0;
+                            const oc = selected.expenses
+                              .filter((e) => (e.propertyId ?? settings.properties[0]?.id) === pp.id)
+                              .reduce((s, e) => s + e.amountCents, 0);
+                            return br + oc;
+                          }),
                         );
                         return (
                           <div
@@ -491,20 +601,119 @@ export function BnbManagerApp() {
                                 </div>
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                                   <Pill tone="neutral">
-                                    Rent: {formatMoney(rent, moneyOpts)}
+                                    Revenue: {formatMoney(revenue, moneyOpts)}
                                   </Pill>
                                   <Pill tone="neutral">
-                                    Op cost: {formatMoney(opCost, moneyOpts)}
+                                    Cost: {formatMoney(totalCost, moneyOpts)}
                                   </Pill>
+                                  <Pill tone={profit > 0 ? "good" : profit < 0 ? "bad" : "neutral"}>
+                                    Profit: {formatMoney(profit, moneyOpts)}
+                                  </Pill>
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2">
+                                    {(() => {
+                                      const link = p.listings?.airbnb;
+                                      const href = link?.url ? sanitizeExternalUrl(link.url) : undefined;
+                                      return (
+                                        <ListingIcon
+                                          provider="airbnb"
+                                          active={Boolean(link?.active && href)}
+                                          href={href ?? undefined}
+                                        />
+                                      );
+                                    })()}
+                                    {(() => {
+                                      const link = p.listings?.booking;
+                                      const href = link?.url ? sanitizeExternalUrl(link.url) : undefined;
+                                      return (
+                                        <ListingIcon
+                                          provider="booking"
+                                          active={Boolean(link?.active && href)}
+                                          href={href ?? undefined}
+                                        />
+                                      );
+                                    })()}
+                                    {(() => {
+                                      const link = p.listings?.other;
+                                      const href = link?.url ? sanitizeExternalUrl(link.url) : undefined;
+                                      return (
+                                        <ListingIcon
+                                          provider="other"
+                                          active={Boolean(link?.active && href)}
+                                          href={href ?? undefined}
+                                        />
+                                      );
+                                    })()}
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setOpenListingsForPropertyId(
+                                        openListingsForPropertyId === p.id ? null : p.id,
+                                      )
+                                    }
+                                    className="rounded-lg px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                                  >
+                                    Listings
+                                  </button>
                                 </div>
                               </div>
                               <MoneyDrum
-                                rentMinor={rent}
-                                operatingCostMinor={opCost}
-                                scaleMaxMinor={maxRent}
+                                revenueMinor={revenue}
+                                totalCostMinor={totalCost}
+                                baseRentMinor={baseRentCost}
+                                operatingCostMinor={operatingCost}
+                                scaleMaxMinor={maxCost}
                                 variant={p.tenure === "owned" ? "owned" : "rented"}
                               />
                             </div>
+
+                            {openListingsForPropertyId === p.id ? (
+                              <div className="mt-3 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
+                                <SmallLabel>Listing links</SmallLabel>
+                                {(["airbnb", "booking", "other"] as const).map((provider) => {
+                                  const current = p.listings?.[provider] ?? { url: "", active: false };
+                                  return (
+                                    <div key={provider} className="grid gap-2 sm:grid-cols-[120px_1fr_110px] sm:items-center">
+                                      <div className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                                        {provider === "airbnb"
+                                          ? "Airbnb"
+                                          : provider === "booking"
+                                            ? "Booking.com"
+                                            : "Other"}
+                                      </div>
+                                      <TextInput
+                                        placeholder="https://..."
+                                        defaultValue={current.url}
+                                        onBlur={(e) => {
+                                          const raw = e.target.value;
+                                          const sanitized = sanitizeExternalUrl(raw);
+                                          if (sanitized === null) {
+                                            toast("Invalid URL (must be http/https)", "bad");
+                                            return;
+                                          }
+                                          commit(setPropertyListing(data, p.id, provider, { url: sanitized }));
+                                          toast("Link saved", "good");
+                                        }}
+                                      />
+                                      <label className="flex items-center gap-2 text-xs text-zinc-700 dark:text-zinc-300">
+                                        <input
+                                          type="checkbox"
+                                          checked={current.active}
+                                          onChange={(e) => {
+                                            commit(setPropertyListing(data, p.id, provider, { active: e.target.checked }));
+                                          }}
+                                        />
+                                        Active
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
                             <div className="mt-3 grid gap-2">
                               <div className="grid gap-1">
                                 <SmallLabel>Tenure</SmallLabel>
@@ -521,20 +730,89 @@ export function BnbManagerApp() {
                                   <option value="rented">Rented</option>
                                 </select>
                               </div>
-                              <SmallLabel>Rent (monthly)</SmallLabel>
-                              <TextInput
-                                inputMode="decimal"
-                                placeholder="0"
-                                defaultValue={
-                                  rent ? String(rent / Math.pow(10, fractionDigits)) : ""
-                                }
-                                onBlur={(e) => {
-                                  const next = parseMoneyToCents(
-                                    e.target.value,
-                                    fractionDigits,
-                                  );
-                                  if (next === null) return;
-                                  commit(setPropertyRent(data, selected.id, p.id, next));
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="grid gap-1">
+                                  <SmallLabel>Rent due on (day)</SmallLabel>
+                                  <TextInput
+                                    inputMode="numeric"
+                                    placeholder="1-31"
+                                    defaultValue={p.rentDueDay ? String(p.rentDueDay) : ""}
+                                    onBlur={(e) => {
+                                      const raw = e.target.value.trim();
+                                      if (raw === "") {
+                                        commit(setPropertyMeta(data, p.id, { rentDueDay: null }));
+                                        return;
+                                      }
+                                      const day = Number(raw);
+                                      if (!Number.isInteger(day) || day < 1 || day > 31) {
+                                        toast("Rent due day must be 1–31", "bad");
+                                        return;
+                                      }
+                                      commit(setPropertyMeta(data, p.id, { rentDueDay: day }));
+                                      toast("Rent due day saved", "good");
+                                    }}
+                                  />
+                                </div>
+                                <div className="grid gap-1">
+                                  <SmallLabel>Agreement valid until</SmallLabel>
+                                  <TextInput
+                                    type="date"
+                                    defaultValue={p.agreementValidUntil ?? ""}
+                                    onBlur={(e) => {
+                                      const v = e.target.value.trim();
+                                      if (v === "") {
+                                        commit(setPropertyMeta(data, p.id, { agreementValidUntil: null }));
+                                        return;
+                                      }
+                                      // Basic validation: YYYY-MM-DD from input[type=date]
+                                      if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(v)) {
+                                        toast("Invalid date", "bad");
+                                        return;
+                                      }
+                                      commit(setPropertyMeta(data, p.id, { agreementValidUntil: v }));
+                                      toast("Agreement date saved", "good");
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              {p.tenure === "rented" ? (
+                                <>
+                                  <SmallLabel>Base rent cost (monthly)</SmallLabel>
+                                  <TextInput
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    defaultValue={
+                                      baseRentCost
+                                        ? String(baseRentCost / Math.pow(10, fractionDigits))
+                                        : ""
+                                    }
+                                    onBlur={(e) => {
+                                      const next = parseMoneyToCents(
+                                        e.target.value,
+                                        fractionDigits,
+                                      );
+                                      if (next === null) return;
+                                      commit(setPropertyRent(data, selected.id, p.id, next));
+                                    }}
+                                  />
+                                </>
+                              ) : (
+                                <div className="text-xs text-zinc-500 dark:text-zinc-500">
+                                  Owned property: base rent cost is assumed to be 0.
+                                </div>
+                              )}
+
+                              <BookingMini
+                                property={p}
+                                bookings={selected.bookings ?? []}
+                                fractionDigits={fractionDigits}
+                                onAdd={(input) => {
+                                  commit(addBooking(data, selected.id, input));
+                                  toast("Booking added", "good");
+                                }}
+                                onDelete={(bookingId) => {
+                                  commit(deleteBooking(data, selected.id, bookingId));
+                                  toast("Booking deleted", "neutral");
                                 }}
                               />
                             </div>
@@ -754,6 +1032,7 @@ export function BnbManagerApp() {
           )}
         </section>
       </div>
+      ) : null}
 
       <footer className="mt-10 text-xs text-zinc-500 dark:text-zinc-500">
         Tip: Because this uses <span className="font-medium">localStorage</span>, your data stays in
@@ -879,6 +1158,256 @@ function ExpenseRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function BookingMini({
+  property,
+  bookings,
+  fractionDigits,
+  onAdd,
+  onDelete,
+}: {
+  property: Property;
+  bookings: { id: string; propertyId: string; day?: number; nights: number; pricePerNightCents: number }[];
+  fractionDigits: number;
+  onAdd: (input: { propertyId: string; nights: number; pricePerNightCents: number; day?: number }) => void;
+  onDelete: (bookingId: string) => void;
+}) {
+  const [day, setDay] = useState<string>("");
+  const [nights, setNights] = useState<string>("1");
+  const [ppn, setPpn] = useState<string>("");
+
+  const list = bookings.filter((b) => b.propertyId === property.id);
+
+  return (
+    <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
+      <div className="flex items-center justify-between">
+        <SmallLabel>Bookings</SmallLabel>
+        <Pill tone="neutral">{list.length}</Pill>
+      </div>
+
+      {list.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {list.slice(0, 3).map((b) => (
+            <div
+              key={b.id}
+              className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-inset ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800"
+            >
+              <div className="min-w-0 truncate text-zinc-700 dark:text-zinc-300">
+                {b.day ? `Day ${b.day} • ` : ""}
+                {b.nights} night(s) @ {b.pricePerNightCents / Math.pow(10, fractionDigits)}
+              </div>
+              <button
+                type="button"
+                onClick={() => onDelete(b.id)}
+                className="rounded-md px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+          {list.length > 3 ? (
+            <div className="text-xs text-zinc-500 dark:text-zinc-500">Showing 3 of {list.length}</div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">No bookings yet.</div>
+      )}
+
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <TextInput
+          inputMode="numeric"
+          placeholder="Day"
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+        />
+        <TextInput
+          inputMode="numeric"
+          placeholder="Nights"
+          value={nights}
+          onChange={(e) => setNights(e.target.value)}
+        />
+        <TextInput
+          inputMode="decimal"
+          placeholder="Price/night"
+          value={ppn}
+          onChange={(e) => setPpn(e.target.value)}
+          className="sm:col-span-2"
+        />
+        <div className="sm:col-span-4 flex justify-end">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const n = Number(nights);
+              if (!Number.isInteger(n) || n < 1) return;
+              const priceMinor = parseMoneyToCents(ppn, fractionDigits);
+              if (priceMinor === null) return;
+              const d = day.trim() ? Number(day) : undefined;
+              if (d !== undefined && (!Number.isInteger(d) || d < 1 || d > 31)) return;
+              onAdd({ propertyId: property.id, nights: n, pricePerNightCents: priceMinor, day: d });
+              setDay("");
+              setNights("1");
+              setPpn("");
+            }}
+            disabled={parseMoneyToCents(ppn, fractionDigits) === null}
+          >
+            Add booking
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnalysisPanel({
+  data,
+  properties,
+  moneyOpts,
+  period,
+  setPeriod,
+  propertyId,
+  setPropertyId,
+}: {
+  data: BnbData;
+  properties: Property[];
+  moneyOpts: { currency: string; locale: string };
+  period: Period;
+  setPeriod: (p: Period) => void;
+  propertyId: string;
+  setPropertyId: (id: string) => void;
+}) {
+  const rows = useMemo(
+    () =>
+      buildSummaryRows({
+        data,
+        properties,
+        period,
+        propertyId: propertyId === "all" ? undefined : propertyId,
+      }),
+    [data, properties, period, propertyId],
+  );
+  const totals = rows.reduce(
+    (acc, r) => {
+      acc.revenue += r.revenueCents;
+      acc.cost += r.totalCostCents;
+      acc.profit += r.profitCents;
+      acc.nights += r.nights;
+      return acc;
+    },
+    { revenue: 0, cost: 0, profit: 0, nights: 0 },
+  );
+
+  return (
+    <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+            Analysis
+          </div>
+          <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+            Property-level and business-level rollups.
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="grid gap-1">
+            <SmallLabel>Period</SmallLabel>
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as Period)}
+              className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+            >
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="semiannual">Semi annual</option>
+              <option value="annual">Annual</option>
+            </select>
+          </div>
+          <div className="grid gap-1">
+            <SmallLabel>Scope</SmallLabel>
+            <select
+              value={propertyId}
+              onChange={(e) => setPropertyId(e.target.value)}
+              className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+            >
+              <option value="all">All properties</option>
+              {properties.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <MetricCard label="Revenue" value={formatMoney(totals.revenue, moneyOpts)} />
+        <MetricCard label="Total cost" value={formatMoney(totals.cost, moneyOpts)} />
+        <MetricCard
+          label="Profit"
+          value={formatMoney(totals.profit, moneyOpts)}
+          sub={`${totals.nights} night(s)`}
+        />
+        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            Profit trend ({rows.length})
+          </div>
+          <div className="mt-2">
+            <Sparkline values={rows.map((r) => r.profitCents)} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+        <table className="min-w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold">Period</th>
+              <th className="px-3 py-2 text-right font-semibold">Revenue</th>
+              <th className="px-3 py-2 text-right font-semibold">Cost</th>
+              <th className="px-3 py-2 text-right font-semibold">Profit</th>
+              <th className="px-3 py-2 text-right font-semibold">Nights</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 bg-white dark:divide-zinc-800 dark:bg-zinc-950">
+            {rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={5}
+                  className="px-3 py-8 text-center text-sm text-zinc-600 dark:text-zinc-400"
+                >
+                  No data yet.
+                </td>
+              </tr>
+            ) : (
+              rows.map((r) => (
+                <tr key={r.period}>
+                  <td className="px-3 py-2">{r.period}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(r.revenueCents, moneyOpts)}</td>
+                  <td className="px-3 py-2 text-right">{formatMoney(r.totalCostCents, moneyOpts)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <span
+                      className={
+                        r.profitCents > 0
+                          ? "text-emerald-700 dark:text-emerald-300 font-medium"
+                          : r.profitCents < 0
+                            ? "text-rose-700 dark:text-rose-300 font-medium"
+                            : "text-zinc-700 dark:text-zinc-300"
+                      }
+                    >
+                      {formatMoney(r.profitCents, moneyOpts)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right">{r.nights}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

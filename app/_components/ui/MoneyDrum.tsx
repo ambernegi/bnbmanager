@@ -3,24 +3,36 @@
 import { useMemo } from "react";
 
 export function MoneyDrum({
-  rentMinor,
+  revenueMinor,
+  totalCostMinor,
+  baseRentMinor,
   operatingCostMinor,
   scaleMaxMinor,
   label,
   variant = "rented",
 }: {
-  rentMinor: number;
+  revenueMinor: number;
+  totalCostMinor: number;
+  baseRentMinor: number;
   operatingCostMinor: number;
   scaleMaxMinor: number;
   label?: string;
   variant?: "owned" | "rented";
 }) {
-  const { fillPct, costPctOfFill } = useMemo(() => {
+  const { revenuePct, costPct, basePct, opPct, isProfitable } = useMemo(() => {
     const max = Math.max(1, scaleMaxMinor);
-    const fill = Math.max(0, Math.min(1, rentMinor / max));
-    const costOfRent = rentMinor > 0 ? Math.max(0, Math.min(1, operatingCostMinor / rentMinor)) : 0;
-    return { fillPct: fill * 100, costPctOfFill: costOfRent * 100 };
-  }, [rentMinor, operatingCostMinor, scaleMaxMinor]);
+    const revenue = Math.max(0, Math.min(1, revenueMinor / max));
+    const cost = Math.max(0, Math.min(1, totalCostMinor / max));
+    const base = Math.max(0, Math.min(1, baseRentMinor / max));
+    const op = Math.max(0, Math.min(1, operatingCostMinor / max));
+    return {
+      revenuePct: revenue * 100,
+      costPct: cost * 100,
+      basePct: base * 100,
+      opPct: op * 100,
+      isProfitable: revenueMinor > totalCostMinor && totalCostMinor > 0,
+    };
+  }, [revenueMinor, totalCostMinor, baseRentMinor, operatingCostMinor, scaleMaxMinor]);
 
   return (
     <div className="flex items-center gap-3">
@@ -31,33 +43,53 @@ export function MoneyDrum({
           <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-white/35 to-transparent dark:from-white/10" />
         </div>
 
-        {/* fill */}
+        {/* cost stack (background) */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0">
+          <div
+            className="absolute inset-x-0 bottom-0 bg-zinc-200/40 dark:bg-zinc-800/40"
+            style={{ height: `${costPct}%` }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 bg-amber-500/22 dark:bg-amber-500/16"
+            style={{ height: `${basePct}%` }}
+            title="Base rent cost"
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 bg-rose-500/22 dark:bg-rose-500/16"
+            style={{ height: `${opPct}%` }}
+            title="Operating cost"
+          />
+          {/* breakeven marker */}
+          <div
+            className="absolute inset-x-0 border-t border-dashed border-zinc-400/60 dark:border-zinc-600/60"
+            style={{ bottom: `${costPct}%` }}
+          />
+        </div>
+
+        {/* revenue fill (foreground) */}
         <div
           className="absolute inset-x-0 bottom-0 transition-[height] duration-700 ease-out"
-          style={{ height: `${fillPct}%` }}
+          style={{ height: `${revenuePct}%` }}
         >
-          {/* money texture */}
           <div
             className={
               variant === "owned"
-                ? "absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,.22),rgba(99,102,241,.12))] dark:bg-[linear-gradient(135deg,rgba(59,130,246,.18),rgba(99,102,241,.08))]"
-                : "absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,.22),rgba(34,197,94,.12))] dark:bg-[linear-gradient(135deg,rgba(16,185,129,.18),rgba(34,197,94,.08))]"
+                ? "absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,.26),rgba(99,102,241,.14))] dark:bg-[linear-gradient(135deg,rgba(59,130,246,.20),rgba(99,102,241,.10))]"
+                : "absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,.26),rgba(34,197,94,.14))] dark:bg-[linear-gradient(135deg,rgba(16,185,129,.20),rgba(34,197,94,.10))]"
             }
           />
           <div className="absolute inset-0 opacity-50 mix-blend-multiply dark:mix-blend-screen">
             <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(0,0,0,.08),rgba(0,0,0,.08)_2px,transparent_2px,transparent_10px)] dark:bg-[repeating-linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.08)_2px,transparent_2px,transparent_10px)]" />
           </div>
-
-          {/* operating cost portion */}
-          <div
-            className={
-              variant === "owned"
-                ? "absolute inset-x-0 bottom-0 bg-amber-500/35 transition-[height] duration-700 ease-out dark:bg-amber-500/25"
-                : "absolute inset-x-0 bottom-0 bg-rose-500/35 transition-[height] duration-700 ease-out dark:bg-rose-500/25"
-            }
-            style={{ height: `${costPctOfFill}%` }}
-          />
         </div>
+
+        {isProfitable ? (
+          <div className="pointer-events-none absolute inset-x-0 top-1 flex justify-center">
+            <div className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
+              Profit
+            </div>
+          </div>
+        ) : null}
 
         {/* rim */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-zinc-100 dark:bg-zinc-900" />
@@ -69,9 +101,7 @@ export function MoneyDrum({
             {label}
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-500">
-            {variant === "owned"
-              ? "Blue = owned rent, amber = operating cost"
-              : "Green = rent, red = operating cost"}
+            Revenue fills up to costs (breakeven line).
           </div>
         </div>
       ) : null}

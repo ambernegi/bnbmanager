@@ -10,10 +10,20 @@ export type ExpenseItem = {
 
 export type Region = "india" | "us" | "europe" | "uk";
 
+export type ListingProvider = "airbnb" | "booking" | "other";
+
+export type ListingLink = {
+  url: string;
+  active: boolean;
+};
+
 export type Property = {
   id: string;
   name: string;
   tenure?: "owned" | "rented";
+  listings?: Partial<Record<ListingProvider, ListingLink>>;
+  rentDueDay?: number; // 1-31
+  agreementValidUntil?: string; // YYYY-MM-DD (local date)
 };
 
 export type MonthProperty = {
@@ -78,5 +88,24 @@ export type BnbDataV5 = {
   months: MonthEntry[];
 };
 
-export type BnbData = BnbDataV1 | BnbDataV2 | BnbDataV3 | BnbDataV4 | BnbDataV5;
+export type BnbDataV6 = {
+  version: 6;
+  settings: AppSettings & { properties: Property[] };
+  months: MonthEntry[];
+};
+
+export type BnbDataV7 = {
+  version: 7;
+  settings: AppSettings & { properties: Property[] };
+  months: MonthEntry[];
+};
+
+export type BnbData =
+  | BnbDataV1
+  | BnbDataV2
+  | BnbDataV3
+  | BnbDataV4
+  | BnbDataV5
+  | BnbDataV6
+  | BnbDataV7;
 

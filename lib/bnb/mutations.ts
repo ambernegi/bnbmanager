@@ -1,20 +1,38 @@
 import type {
   AppSettings,
   BnbData,
-  BnbDataV3,
+  BnbDataV5,
+  BookingItem,
   ExpenseItem,
   MonthEntry,
   MonthProperty,
   Property,
 } from "@/lib/bnb/types";
-import { isValidMonthKey, newId, nowIso } from "@/lib/bnb/utils";
+import { isValidMonthKey, newId, nowIso, regionDefaults } from "@/lib/bnb/utils";
 import { defaultSettings } from "@/lib/bnb/storage";
+import { sanitizeExternalUrl } from "@/lib/bnb/url";
 
-function asV3(data: BnbData): BnbDataV3 {
-  if (data.version === 3) return data;
-  const baseSettings = data.version === 2 ? data.settings : defaultSettings();
-  const properties: Property[] = [{ id: "prop_default", name: "Property 1" }];
-  const defaultPropId = properties[0].id;
+function asV5(data: BnbData): BnbDataV5 {
+  if (data.version === 5) return data;
+  // Fallback: coerce older shapes into v5.
+  const baseSettings =
+    data.version === 4
+      ? data.settings
+      : data.version === 3
+        ? data.settings
+        : data.version === 2
+          ? data.settings
+          : defaultSettings();
+  const properties: Property[] =
+    "properties" in baseSettings && Array.isArray((baseSettings as { properties?: unknown }).properties)
+      ? ((baseSettings as { properties: Property[] }).properties as Property[])
+      : [{ id: "prop_default", name: "Property 1", tenure: "owned" }];
+  const defaultPropId = properties[0]?.id ?? "prop_default";
+  const region =
+    "region" in baseSettings && typeof (baseSettings as { region?: unknown }).region === "string"
+      ? ((baseSettings as { region?: "india" | "us" | "europe" | "uk" }).region ?? "india")
+      : "india";
+  const defaults = regionDefaults(region);
   const months = data.months.map((m) => ({
     ...m,
     incomeCents: 0,
@@ -23,8 +41,19 @@ function asV3(data: BnbData): BnbDataV3 {
         ? m.properties
         : ([{ propertyId: defaultPropId, rentCents: m.incomeCents }] as MonthProperty[]),
     expenses: m.expenses.map((e) => ({ ...e, propertyId: e.propertyId ?? defaultPropId })),
+    bookings: m.bookings ?? [],
   }));
-  return { version: 3, settings: { ...baseSettings, properties }, months };
+  return {
+    version: 5,
+    settings: { ...baseSettings, properties, region, currency: defaults.currency, locale: defaults.locale },
+    months,
+  };
+}
+
+function asV7(data: BnbData): BnbDataV5 {
+  // Mutations currently operate on v5+ compatible shapes; storage handles v7 persistence.
+  // We keep using v5 runtime typing while still allowing extra property fields to exist.
+  return asV5(data);
 }
 
 function sortMonthsAsc(months: MonthEntry[]): MonthEntry[] {
@@ -32,7 +61,7 @@ function sortMonthsAsc(months: MonthEntry[]): MonthEntry[] {
 }
 
 export function addMonth(data: BnbData, monthKey: string): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   if (!isValidMonthKey(monthKey)) return data;
   const exists = d.months.some((m) => m.month === monthKey);
   if (exists) return d;
@@ -44,6 +73,7 @@ export function addMonth(data: BnbData, monthKey: string): BnbData {
     incomeCents: 0,
     properties: props,
     expenses: [],
+    bookings: [],
     notes: "",
     createdAt: t,
     updatedAt: t,
@@ -52,12 +82,12 @@ export function addMonth(data: BnbData, monthKey: string): BnbData {
 }
 
 export function deleteMonth(data: BnbData, monthId: string): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   return { ...d, months: d.months.filter((m) => m.id !== monthId) };
 }
 
 export function setIncome(data: BnbData, monthId: string, incomeCents: number): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   if (!Number.isFinite(incomeCents)) return data;
   const t = nowIso();
   return {
@@ -67,7 +97,7 @@ export function setIncome(data: BnbData, monthId: string, incomeCents: number): 
 }
 
 export function setNotes(data: BnbData, monthId: string, notes: string): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   const t = nowIso();
   return {
     ...d,
@@ -76,14 +106,23 @@ export function setNotes(data: BnbData, monthId: string, notes: string): BnbData
 }
 
 export function setSettings(data: BnbData, patch: Partial<AppSettings>): BnbData {
-  const d = asV3(data);
-  const next: AppSettings = { ...d.settings, ...patch };
+  const d = asV5(data);
+  const next = { ...d.settings, ...patch };
   if (!next.currency || !next.locale) return d;
   return { ...d, settings: next };
 }
 
+export function setRegion(data: BnbData, region: "india" | "us" | "europe" | "uk"): BnbData {
+  const d = asV5(data);
+  const defaults = regionDefaults(region);
+  return {
+    ...d,
+    settings: { ...d.settings, region, currency: defaults.currency, locale: defaults.locale },
+  };
+}
+
 export function addProperty(data: BnbData, name: string): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   const trimmed = name.trim();
   if (!trimmed) return d;
   const id = newId();
@@ -105,7 +144,7 @@ export function setPropertyTenure(
   propertyId: string,
   tenure: "owned" | "rented",
 ): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   return {
     ...d,
     settings: {
@@ -117,13 +156,66 @@ export function setPropertyTenure(
   };
 }
 
+export function setPropertyListing(
+  data: BnbData,
+  propertyId: string,
+  provider: "airbnb" | "booking" | "other",
+  patch: Partial<{ url: string; active: boolean }>,
+): BnbData {
+  const d = asV7(data);
+  const nextProps = d.settings.properties.map((p) => {
+    if (p.id !== propertyId) return p;
+    const current = p.listings?.[provider] ?? { url: "", active: false };
+    const nextUrlRaw = patch.url !== undefined ? patch.url : current.url;
+    const sanitized = patch.url !== undefined ? sanitizeExternalUrl(nextUrlRaw) : nextUrlRaw;
+    // If url is being set and it's invalid, ignore the update.
+    if (patch.url !== undefined && sanitized === null) return p;
+    const next = {
+      url: patch.url !== undefined ? (sanitized ?? "") : current.url,
+      active: patch.active !== undefined ? patch.active : current.active,
+    };
+    return { ...p, listings: { ...(p.listings ?? {}), [provider]: next } };
+  });
+  return { ...d, settings: { ...d.settings, properties: nextProps } };
+}
+
+export function setPropertyMeta(
+  data: BnbData,
+  propertyId: string,
+  patch: Partial<{ rentDueDay: number | null; agreementValidUntil: string | null }>,
+): BnbData {
+  const d = asV7(data);
+  const nextProps = d.settings.properties.map((p) => {
+    if (p.id !== propertyId) return p;
+    const rentDueDay =
+      patch.rentDueDay === undefined
+        ? p.rentDueDay
+        : patch.rentDueDay === null
+          ? undefined
+          : patch.rentDueDay;
+    if (rentDueDay !== undefined && (!Number.isInteger(rentDueDay) || rentDueDay < 1 || rentDueDay > 31))
+      return p;
+
+    const agreementValidUntil =
+      patch.agreementValidUntil === undefined
+        ? p.agreementValidUntil
+        : patch.agreementValidUntil === null
+          ? undefined
+          : patch.agreementValidUntil;
+    if (agreementValidUntil !== undefined && typeof agreementValidUntil !== "string") return p;
+
+    return { ...p, rentDueDay, agreementValidUntil };
+  });
+  return { ...d, settings: { ...d.settings, properties: nextProps } };
+}
+
 export function setPropertyRent(
   data: BnbData,
   monthId: string,
   propertyId: string,
   rentCents: number,
 ): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   if (!Number.isFinite(rentCents)) return d;
   const t = nowIso();
   return {
@@ -145,7 +237,7 @@ export function addExpense(
   monthId: string,
   input: Pick<ExpenseItem, "description" | "amountCents"> & { day?: number; propertyId?: string },
 ): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   const desc = input.description.trim();
   if (!desc) return data;
   if (!Number.isFinite(input.amountCents)) return data;
@@ -177,7 +269,7 @@ export function updateExpense(
   expenseId: string,
   patch: Partial<Pick<ExpenseItem, "description" | "amountCents" | "day" | "propertyId">>,
 ): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   const t = nowIso();
   return {
     ...d,
@@ -208,13 +300,55 @@ export function updateExpense(
 }
 
 export function deleteExpense(data: BnbData, monthId: string, expenseId: string): BnbData {
-  const d = asV3(data);
+  const d = asV5(data);
   const t = nowIso();
   return {
     ...d,
     months: d.months.map((m) =>
       m.id === monthId
         ? { ...m, expenses: m.expenses.filter((e) => e.id !== expenseId), updatedAt: t }
+        : m,
+    ),
+  };
+}
+
+export function addBooking(
+  data: BnbData,
+  monthId: string,
+  input: Pick<BookingItem, "propertyId" | "nights" | "pricePerNightCents"> & { day?: number },
+): BnbData {
+  const d = asV5(data);
+  if (!input.propertyId) return d;
+  if (!Number.isInteger(input.nights) || input.nights < 1) return d;
+  if (!Number.isFinite(input.pricePerNightCents)) return d;
+  if (input.day !== undefined && (!Number.isInteger(input.day) || input.day < 1 || input.day > 31))
+    return d;
+  const t = nowIso();
+  const b: BookingItem = {
+    id: newId(),
+    propertyId: input.propertyId,
+    day: input.day,
+    nights: input.nights,
+    pricePerNightCents: input.pricePerNightCents,
+    createdAt: t,
+    updatedAt: t,
+  };
+  return {
+    ...d,
+    months: d.months.map((m) =>
+      m.id === monthId ? { ...m, bookings: [...(m.bookings ?? []), b], updatedAt: t } : m,
+    ),
+  };
+}
+
+export function deleteBooking(data: BnbData, monthId: string, bookingId: string): BnbData {
+  const d = asV5(data);
+  const t = nowIso();
+  return {
+    ...d,
+    months: d.months.map((m) =>
+      m.id === monthId
+        ? { ...m, bookings: (m.bookings ?? []).filter((b) => b.id !== bookingId), updatedAt: t }
         : m,
     ),
   };
