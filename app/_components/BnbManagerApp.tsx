@@ -89,8 +89,8 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={[
-        "h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-950 shadow-sm",
-        "placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-100/20",
+        "h-10 w-full rounded-xl border border-zinc-200/80 bg-white/90 px-3 text-sm text-zinc-950 shadow-sm",
+        "placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-rose-500/25 dark:border-zinc-800 dark:bg-zinc-950/80 dark:text-zinc-50 dark:focus:ring-rose-400/25",
         props.className ?? "",
       ].join(" ")}
     />
@@ -108,16 +108,16 @@ function Button({
 }) {
   const cls =
     variant === "danger"
-      ? "bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-600 dark:hover:bg-rose-500"
+      ? "bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500"
       : variant === "secondary"
-        ? "bg-white text-zinc-950 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:text-zinc-50 dark:ring-zinc-800 dark:hover:bg-zinc-900"
-        : "bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+        ? "bg-white/80 text-zinc-950 ring-1 ring-inset ring-zinc-200/80 hover:bg-white dark:bg-zinc-950/60 dark:text-zinc-50 dark:ring-zinc-800 dark:hover:bg-zinc-900"
+        : "bg-rose-500 text-white hover:bg-rose-600 dark:bg-rose-500 dark:hover:bg-rose-400";
 
   return (
     <button
       {...rest}
       className={[
-        "inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+        "inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
         cls,
         rest.className ?? "",
       ].join(" ")}
@@ -287,17 +287,17 @@ export function BnbManagerApp() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-white dark:from-black dark:to-zinc-950">
+    <div className="min-h-screen bg-gradient-to-b from-white via-rose-50/40 to-white dark:from-black dark:via-zinc-950 dark:to-zinc-950">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
-      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="relative h-14 w-14 sm:h-16 sm:w-16">
+      <header className="sticky top-0 z-40 -mx-4 mb-2 flex flex-col gap-4 border-b border-zinc-200/70 bg-white/70 px-4 py-4 backdrop-blur md:flex-row md:items-end md:justify-between dark:border-zinc-800/70 dark:bg-zinc-950/60">
+        <div className="flex items-center gap-4">
+          <div className="relative h-24 w-24 sm:h-28 sm:w-28">
             <Image
               src="/hostops-logo.png"
               alt="HostOps logo"
               fill
               priority
-              sizes="(min-width: 640px) 64px, 56px"
+              sizes="(min-width: 640px) 112px, 96px"
               className="object-contain opacity-90 mix-blend-multiply dark:mix-blend-screen"
               style={{
                 // Fade the edges so the square PNG blends into the page background.
@@ -308,23 +308,19 @@ export function BnbManagerApp() {
               }}
             />
           </div>
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-              HostOps
-            </h1>
-            <p className="text-sm text-zinc-700 dark:text-zinc-300">
-              Run every property with clarity, control, and confidence.
-            </p>
-            <p className="text-xs text-zinc-500 dark:text-zinc-500">
-              Local-first. Data stays in your browser.{" "}
-              <Link className="underline underline-offset-2" href="/help">
-                Help
-              </Link>
-            </p>
-          </div>
         </div>
 
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+              HostOps
+            </div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-500">
+              <Link className="underline underline-offset-2" href="/help">
+                Help
+              </Link>
+            </div>
+          </div>
           <div className="flex rounded-xl ring-1 ring-inset ring-zinc-200 bg-white p-1 shadow-sm dark:ring-zinc-800 dark:bg-zinc-950">
             <button
               type="button"
@@ -332,7 +328,7 @@ export function BnbManagerApp() {
               className={[
                 "h-9 rounded-lg px-3 text-sm font-medium",
                 view === "tracker"
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  ? "bg-rose-500 text-white"
                   : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
               ].join(" ")}
             >
@@ -344,7 +340,7 @@ export function BnbManagerApp() {
               className={[
                 "h-9 rounded-lg px-3 text-sm font-medium",
                 view === "analysis"
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  ? "bg-rose-500 text-white"
                   : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
               ].join(" ")}
             >
@@ -404,7 +400,7 @@ export function BnbManagerApp() {
       </header>
 
       {view === "tracker" && reminders.length > 0 ? (
-        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="mt-6 rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
               Reminders
@@ -476,7 +472,7 @@ export function BnbManagerApp() {
           }
           sub="Income − expenses"
         />
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
           <div className="flex items-center justify-between">
             <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
               Profit trend (last 12 months)
@@ -492,7 +488,7 @@ export function BnbManagerApp() {
 
       {view === "tracker" ? (
       <div className="mt-6 grid gap-6 md:grid-cols-[320px_1fr]">
-        <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <aside className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
           <div className="flex items-center justify-between">
             <SectionTitle>Months</SectionTitle>
             <Pill tone="neutral">{monthsSorted.length}</Pill>
@@ -508,8 +504,8 @@ export function BnbManagerApp() {
                 const totals = getMonthTotals(m, settings.properties);
                 const selectedCls =
                   selected?.id === m.id
-                    ? "ring-2 ring-zinc-900/10 dark:ring-zinc-100/10"
-                    : "ring-1 ring-zinc-200 dark:ring-zinc-800";
+                    ? "ring-2 ring-rose-500/30 dark:ring-rose-400/30"
+                    : "ring-1 ring-zinc-200/70 dark:ring-zinc-800";
                 const profitTone =
                   totals.profitCents > 0 ? "good" : totals.profitCents < 0 ? "bad" : "neutral";
                 return (
@@ -518,7 +514,7 @@ export function BnbManagerApp() {
                     type="button"
                     onClick={() => setSelectedMonthId(m.id)}
                     className={[
-                      "w-full rounded-xl bg-white p-3 text-left shadow-sm transition hover:bg-zinc-50 dark:bg-zinc-950 dark:hover:bg-zinc-900",
+                      "w-full rounded-2xl bg-white/80 p-3 text-left shadow-sm backdrop-blur transition hover:bg-white dark:bg-zinc-950/60 dark:hover:bg-zinc-950",
                       selectedCls,
                     ].join(" ")}
                   >
@@ -545,7 +541,7 @@ export function BnbManagerApp() {
           </div>
         </aside>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <section className="rounded-2xl border border-zinc-200/70 bg-white/80 p-5 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
           {!selected ? (
             <div className="rounded-xl border border-dashed border-zinc-200 p-6 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
               Create a month to start tracking.
@@ -647,7 +643,7 @@ export function BnbManagerApp() {
                         return (
                           <div
                             key={p.id}
-                            className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+                            className="rounded-2xl border border-zinc-200/70 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60"
                           >
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
@@ -951,19 +947,134 @@ export function BnbManagerApp() {
                   <Pill tone="neutral">{selected.expenses.length}</Pill>
                 </div>
 
-                <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <SmallLabel>Quick add</SmallLabel>
-                    {["Cleaning", "Supplies", "Utilities", "Repairs", "Maintenance", "Other"].map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setNewExpenseDesc(s)}
-                        className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-800 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:text-zinc-200 dark:ring-zinc-800 dark:hover:bg-zinc-900"
+                <div className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+                        Add expense
+                      </div>
+                      <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                        Monthly cost is what counts in totals.
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SmallLabel>Quick add</SmallLabel>
+                      {["Cleaning", "Supplies", "Utilities", "Repairs", "Maintenance", "Other"].map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => setNewExpenseDesc(s)}
+                          className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-800 ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50 dark:bg-zinc-950 dark:text-zinc-200 dark:ring-zinc-800 dark:hover:bg-zinc-900"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                    <div className="grid gap-1">
+                      <SmallLabel>Day</SmallLabel>
+                      <TextInput
+                        inputMode="numeric"
+                        placeholder="1-31"
+                        value={newExpenseDay}
+                        onChange={(e) => setNewExpenseDay(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="grid gap-1 lg:col-span-2">
+                      <SmallLabel>Description</SmallLabel>
+                      <TextInput
+                        placeholder="Cleaning, supplies, utilities…"
+                        value={newExpenseDesc}
+                        onChange={(e) => setNewExpenseDesc(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="grid gap-1">
+                      <SmallLabel>Property</SmallLabel>
+                      <select
+                        value={newExpensePropertyId}
+                        onChange={(e) => setNewExpensePropertyId(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
                       >
-                        {s}
-                      </button>
-                    ))}
+                        {settings.properties.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid gap-1">
+                      <SmallLabel>Type</SmallLabel>
+                      <select
+                        value={newExpenseMode}
+                        onChange={(e) => setNewExpenseMode(e.target.value === "per_day" ? "per_day" : "flat")}
+                        className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+                      >
+                        <option value="flat">Flat</option>
+                        <option value="per_day">Per-day</option>
+                      </select>
+                    </div>
+
+                    <div className="grid gap-1">
+                      <SmallLabel>Monthly cost</SmallLabel>
+                      {newExpenseMode === "flat" ? (
+                        <TextInput
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={newExpenseAmount}
+                          onChange={(e) => setNewExpenseAmount(e.target.value)}
+                        />
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <TextInput
+                            inputMode="decimal"
+                            placeholder="Rate/day"
+                            value={newExpenseRatePerDay}
+                            onChange={(e) => setNewExpenseRatePerDay(e.target.value)}
+                          />
+                          <TextInput
+                            inputMode="numeric"
+                            placeholder="Days"
+                            value={newExpenseDays}
+                            onChange={(e) => setNewExpenseDays(e.target.value)}
+                          />
+                        </div>
+                      )}
+                      {newExpenseMode === "per_day" ? (
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-500">
+                          Total:{" "}
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                            {(() => {
+                              const rate = parseMoneyToCents(newExpenseRatePerDay, fractionDigits);
+                              const d = newExpenseDays.trim() ? Number(newExpenseDays) : NaN;
+                              if (rate === null || !Number.isInteger(d) || d < 1) return "—";
+                              return formatMoney(rate * d, moneyOpts);
+                            })()}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      className="w-full sm:w-auto"
+                      onClick={onAddExpense}
+                      disabled={
+                        !newExpenseDesc.trim() ||
+                        (newExpenseMode === "flat"
+                          ? parseMoneyToCents(newExpenseAmount, fractionDigits) === null
+                          : parseMoneyToCents(newExpenseRatePerDay, fractionDigits) === null ||
+                            !Number.isInteger(Number(newExpenseDays.trim())) ||
+                            Number(newExpenseDays.trim()) < 1)
+                      }
+                    >
+                      Add expense
+                    </Button>
                   </div>
                 </div>
 
@@ -983,7 +1094,7 @@ export function BnbManagerApp() {
                   </Button>
                 </div>
 
-                <div className="overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+                <div className="overflow-x-auto rounded-2xl ring-1 ring-zinc-200/70 dark:ring-zinc-800">
                   <table className="min-w-full text-sm">
                     <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
                       <tr>
@@ -1023,102 +1134,6 @@ export function BnbManagerApp() {
                         ))
                       )}
 
-                      <tr className="bg-zinc-50/60 dark:bg-zinc-900/30">
-                        <td className="px-3 py-2 align-top">
-                          <TextInput
-                            inputMode="numeric"
-                            placeholder="1-31"
-                            value={newExpenseDay}
-                            onChange={(e) => setNewExpenseDay(e.target.value)}
-                          />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <TextInput
-                            placeholder="e.g. Cleaning, supplies, utilities"
-                            value={newExpenseDesc}
-                            onChange={(e) => setNewExpenseDesc(e.target.value)}
-                          />
-                          <div className="mt-2">
-                            <select
-                              value={newExpensePropertyId}
-                              onChange={(e) => setNewExpensePropertyId(e.target.value)}
-                              className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-                            >
-                              {settings.properties.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="grid gap-2">
-                            <select
-                              value={newExpenseMode}
-                              onChange={(e) =>
-                                setNewExpenseMode(e.target.value === "per_day" ? "per_day" : "flat")
-                              }
-                              className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-                            >
-                              <option value="flat">Flat amount</option>
-                              <option value="per_day">Per-day amount</option>
-                            </select>
-                            {newExpenseMode === "per_day" ? (
-                              <div className="grid grid-cols-2 gap-2">
-                                <TextInput
-                                  inputMode="decimal"
-                                  placeholder="Rate/day"
-                                  value={newExpenseRatePerDay}
-                                  onChange={(e) => setNewExpenseRatePerDay(e.target.value)}
-                                />
-                                <TextInput
-                                  inputMode="numeric"
-                                  placeholder="Days"
-                                  value={newExpenseDays}
-                                  onChange={(e) => setNewExpenseDays(e.target.value)}
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                          {newExpenseMode === "flat" ? (
-                            <TextInput
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              value={newExpenseAmount}
-                              onChange={(e) => setNewExpenseAmount(e.target.value)}
-                            />
-                          ) : (
-                            <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-                              Monthly cost:{" "}
-                              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                                {(() => {
-                                  const rate = parseMoneyToCents(newExpenseRatePerDay, fractionDigits);
-                                  const d = newExpenseDays.trim() ? Number(newExpenseDays) : NaN;
-                                  if (rate === null || !Number.isInteger(d) || d < 1) return "—";
-                                  return formatMoney(rate * d, moneyOpts);
-                                })()}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 align-top text-right">
-                          <Button
-                            variant="secondary"
-                            onClick={onAddExpense}
-                            disabled={
-                              !newExpenseDesc.trim() ||
-                              (newExpenseMode === "flat"
-                                ? parseMoneyToCents(newExpenseAmount, fractionDigits) === null
-                                : parseMoneyToCents(newExpenseRatePerDay, fractionDigits) === null ||
-                                  !Number.isInteger(Number(newExpenseDays.trim())) ||
-                                  Number(newExpenseDays.trim()) < 1)
-                            }
-                          >
-                            Add
-                          </Button>
-                        </td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -1564,7 +1579,7 @@ function AnalysisPanel({
   }));
 
   return (
-    <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="mt-6 rounded-2xl border border-zinc-200/70 bg-white/80 p-5 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-sm font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
@@ -1631,7 +1646,7 @@ function AnalysisPanel({
           value={formatMoney(totals.profit, moneyOpts)}
           sub={`${totals.nights} night(s)`}
         />
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
           <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
             Profit trend ({rows.length})
           </div>
@@ -1678,7 +1693,7 @@ function AnalysisPanel({
         </div>
       ) : null}
 
-      <div className="mt-5 overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+      <div className="mt-5 overflow-x-auto rounded-2xl ring-1 ring-zinc-200/70 dark:ring-zinc-800">
         <table className="min-w-full text-sm">
           <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-900/60 dark:text-zinc-400">
             <tr>

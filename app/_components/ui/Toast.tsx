@@ -53,16 +53,16 @@ export function Toaster({
           {toasts.map((t) => {
             const toneCls =
               t.tone === "good"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/60 dark:text-emerald-100"
+                ? "border-emerald-200/80 bg-emerald-50/80 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-100"
                 : t.tone === "bad"
-                  ? "border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/50 dark:bg-rose-950/60 dark:text-rose-100"
-                  : "border-zinc-200 bg-white text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50";
+                  ? "border-red-200/80 bg-red-50/80 text-red-900 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-100"
+                  : "border-zinc-200/80 bg-white/80 text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-50";
             return (
               <div
                 key={t.id}
                 className={[
-                  "pointer-events-auto flex items-start justify-between gap-3 rounded-xl border px-3 py-2 shadow-sm",
-                  "backdrop-blur supports-[backdrop-filter]:bg-white/85 dark:supports-[backdrop-filter]:bg-zinc-950/75",
+                  "pointer-events-auto flex items-start justify-between gap-3 rounded-2xl border px-3 py-2 shadow-sm",
+                  "backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-zinc-950/60",
                   "transition-all duration-200 ease-out",
                   toneCls,
                 ].join(" ")}
@@ -71,7 +71,7 @@ export function Toaster({
                 <button
                   type="button"
                   onClick={() => onDismiss(t.id)}
-                  className="rounded-md px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-white dark:text-zinc-300 dark:hover:bg-zinc-900"
                 >
                   Close
                 </button>

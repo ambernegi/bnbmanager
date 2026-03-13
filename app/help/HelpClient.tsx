@@ -16,22 +16,116 @@ export type HelpSection = {
 };
 
 function InlineText({ text }: { text: string }) {
-  // Render inline `code` spans without using dangerouslySetInnerHTML.
-  const parts = useMemo(() => text.split(/(`[^`]+`)/g), [text]);
+  // Minimal inline markdown renderer (safe React elements; no HTML injection).
+  // Supports: `code`, **bold**, *italic*, [label](url)
+  const nodes = useMemo(() => {
+    type Tok =
+      | { kind: "text"; value: string }
+      | { kind: "code"; value: string }
+      | { kind: "bold"; value: string }
+      | { kind: "italic"; value: string }
+      | { kind: "link"; label: string; href: string };
+
+    const out: Tok[] = [];
+    const s = text;
+    let i = 0;
+
+    const pushText = (v: string) => {
+      if (!v) return;
+      const last = out[out.length - 1];
+      if (last && last.kind === "text") last.value += v;
+      else out.push({ kind: "text", value: v });
+    };
+
+    while (i < s.length) {
+      // code: `...`
+      if (s[i] === "`") {
+        const j = s.indexOf("`", i + 1);
+        if (j > i + 1) {
+          out.push({ kind: "code", value: s.slice(i + 1, j) });
+          i = j + 1;
+          continue;
+        }
+      }
+
+      // bold: **...**
+      if (s.startsWith("**", i)) {
+        const j = s.indexOf("**", i + 2);
+        if (j > i + 2) {
+          out.push({ kind: "bold", value: s.slice(i + 2, j) });
+          i = j + 2;
+          continue;
+        }
+      }
+
+      // link: [label](href)
+      if (s[i] === "[") {
+        const close = s.indexOf("]", i + 1);
+        const openParen = close >= 0 ? s[close + 1] === "(" : false;
+        if (close >= 0 && openParen) {
+          const closeParen = s.indexOf(")", close + 2);
+          if (closeParen > close + 2) {
+            const label = s.slice(i + 1, close);
+            const href = s.slice(close + 2, closeParen);
+            out.push({ kind: "link", label, href });
+            i = closeParen + 1;
+            continue;
+          }
+        }
+      }
+
+      // italic: *...* (avoid treating ** as italic)
+      if (s[i] === "*" && !s.startsWith("**", i)) {
+        const j = s.indexOf("*", i + 1);
+        if (j > i + 1) {
+          out.push({ kind: "italic", value: s.slice(i + 1, j) });
+          i = j + 1;
+          continue;
+        }
+      }
+
+      pushText(s[i] ?? "");
+      i += 1;
+    }
+
+    return out;
+  }, [text]);
+
+  const isSafeHref = (href: string) =>
+    href.startsWith("/") || href.startsWith("http://") || href.startsWith("https://");
+
   return (
     <>
-      {parts.map((p, idx) => {
-        if (p.startsWith("`") && p.endsWith("`") && p.length >= 2) {
+      {nodes.map((n, idx) => {
+        if (n.kind === "text") return <span key={idx}>{n.value}</span>;
+        if (n.kind === "code") {
           return (
             <code
               key={idx}
               className="rounded bg-zinc-100 px-1.5 py-0.5 text-[0.85em] text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100"
             >
-              {p.slice(1, -1)}
+              {n.value}
             </code>
           );
         }
-        return <span key={idx}>{p}</span>;
+        if (n.kind === "bold") return <strong key={idx}>{n.value}</strong>;
+        if (n.kind === "italic") return <em key={idx}>{n.value}</em>;
+        if (n.kind === "link") {
+          return isSafeHref(n.href) ? (
+            <a
+              key={idx}
+              href={n.href}
+              target={n.href.startsWith("http") ? "_blank" : undefined}
+              rel={n.href.startsWith("http") ? "noopener noreferrer" : undefined}
+              className="underline underline-offset-2"
+            >
+              {n.label}
+            </a>
+          ) : (
+            <span key={idx}>{n.label}</span>
+          );
+        }
+        return null;
       })}
     </>
   );
@@ -157,7 +251,7 @@ export function HelpClient({
               </div>
 
               <div className="mt-3 space-y-1">
-                {sections.map((s) => (
+                {(q ? filtered : sections).map((s) => (
                   <a
                     key={s.id}
                     href={`#${s.id}`}
@@ -182,36 +276,26 @@ export function HelpClient({
                 ) : null}
               </div>
 
-              <div className="mt-5 grid gap-3">
+              <div className="mt-5 grid gap-8">
                 {filtered.map((s) => (
                   <div key={s.id} id={s.id} className="scroll-mt-24">
-                    <details className="group rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4 open:bg-white dark:border-zinc-800 dark:bg-zinc-900/20 dark:open:bg-zinc-950">
-                      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                          {s.title}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={`#${s.id}`}
-                            className="rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                            title="Copy link"
-                            onClick={(e) => {
-                              // let hash update, but avoid summary toggle weirdness
-                              e.stopPropagation();
-                            }}
-                          >
-                            #{s.id}
-                          </a>
-                          <span className="text-zinc-500 transition group-open:rotate-180">▾</span>
-                        </div>
-                      </summary>
-
-                      <div className="mt-3">
-                        {s.blocks.map((b, idx) => (
-                          <BlockView key={idx} block={b} />
-                        ))}
-                      </div>
-                    </details>
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+                        {s.title}
+                      </h2>
+                      <a
+                        href={`#${s.id}`}
+                        className="rounded-lg px-2 py-1 text-xs font-medium text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                        title="Link to section"
+                      >
+                        #{s.id}
+                      </a>
+                    </div>
+                    <div className="mt-3 border-t border-zinc-200/70 pt-3 dark:border-zinc-800">
+                      {s.blocks.map((b, idx) => (
+                        <BlockView key={idx} block={b} />
+                      ))}
+                    </div>
                   </div>
                 ))}
 

@@ -23,7 +23,7 @@ export function GroupedBarChart({
 }) {
   const max = Math.max(1, ...rows.flatMap((r) => [r.a, r.b]));
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
       <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{title}</div>
       <div className="mt-3 grid gap-2">
         {rows.map((r) => {
@@ -90,7 +90,7 @@ export function StackedBarChart({
     ...rows.map((r) => r.parts.reduce((s, p) => s + p.value, 0)),
   );
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
       <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{title}</div>
       <div className="mt-3 grid gap-2">
         {rows.map((r) => {
@@ -177,7 +177,7 @@ export function ScatterChart({
     P + innerH - (Math.max(0, Math.min(scaleMax, y)) / scaleMax) * innerH;
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+    <div className="rounded-2xl border border-zinc-200/70 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/60">
       <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{title}</div>
 
       <div className="mt-3 overflow-x-auto">

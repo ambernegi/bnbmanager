@@ -34,8 +34,8 @@ export function ConfirmDialog({
 
   const confirmCls =
     tone === "danger"
-      ? "bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-600 dark:hover:bg-rose-500"
-      : "bg-zinc-950 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+      ? "bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500"
+      : "bg-rose-500 text-white hover:bg-rose-600 dark:bg-rose-500 dark:hover:bg-rose-400";
 
   return (
     <div
@@ -47,10 +47,10 @@ export function ConfirmDialog({
         type="button"
         aria-label="Close dialog"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/40"
+        className="absolute inset-0 cursor-default bg-black/40 backdrop-blur-[2px]"
       />
 
-      <div className="relative w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="relative w-full max-w-md rounded-2xl border border-zinc-200/70 bg-white/90 p-5 shadow-xl backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/70">
         <div className="text-base font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
           {title}
         </div>
@@ -62,7 +62,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-medium ring-1 ring-inset ring-zinc-200 hover:bg-zinc-50 dark:ring-zinc-800 dark:hover:bg-zinc-900"
+            className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium ring-1 ring-inset ring-zinc-200/80 hover:bg-white dark:ring-zinc-800 dark:hover:bg-zinc-900"
           >
             {cancelLabel}
           </button>
@@ -73,7 +73,7 @@ export function ConfirmDialog({
               onClose();
             }}
             className={[
-              "inline-flex h-10 items-center justify-center rounded-lg px-3 text-sm font-medium shadow-sm transition-colors",
+              "inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm font-medium shadow-sm transition-colors",
               confirmCls,
             ].join(" ")}
           >

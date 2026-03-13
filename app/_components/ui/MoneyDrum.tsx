@@ -34,9 +34,21 @@ export function MoneyDrum({
     };
   }, [revenueMinor, totalCostMinor, baseRentMinor, operatingCostMinor, scaleMaxMinor]);
 
+  const hasRevenue = revenueMinor > 0;
+
   return (
     <div className="flex items-center gap-3">
-      <div className="relative h-20 w-12 overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+      <div
+        className={[
+          "hostops-moneydrum relative h-20 w-12 overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-sm",
+          "transition-transform duration-200 ease-out",
+          "hover:-translate-y-0.5 hover:scale-[1.03]",
+          variant === "owned"
+            ? "border-indigo-200/80 dark:border-indigo-900/40"
+            : "dark:border-zinc-800",
+          "dark:bg-zinc-950",
+        ].join(" ")}
+      >
         {/* glass highlight */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-white/40 to-transparent dark:from-white/10" />
@@ -73,18 +85,24 @@ export function MoneyDrum({
         >
           <div
             className={
-              variant === "owned"
-                ? "absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,.26),rgba(99,102,241,.14))] dark:bg-[linear-gradient(135deg,rgba(59,130,246,.20),rgba(99,102,241,.10))]"
-                : "absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,.26),rgba(34,197,94,.14))] dark:bg-[linear-gradient(135deg,rgba(16,185,129,.20),rgba(34,197,94,.10))]"
+              hasRevenue
+                ? "absolute inset-0 bg-[linear-gradient(135deg,rgba(16,185,129,.42),rgba(34,197,94,.18))] dark:bg-[linear-gradient(135deg,rgba(16,185,129,.32),rgba(34,197,94,.14))]"
+                : "absolute inset-0 bg-transparent"
             }
           />
-          <div className="absolute inset-0 opacity-50 mix-blend-multiply dark:mix-blend-screen">
-            <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(0,0,0,.08),rgba(0,0,0,.08)_2px,transparent_2px,transparent_10px)] dark:bg-[repeating-linear-gradient(90deg,rgba(255,255,255,.08),rgba(255,255,255,.08)_2px,transparent_2px,transparent_10px)]" />
+          <div className="absolute inset-0 opacity-60 mix-blend-multiply dark:mix-blend-screen">
+            <div
+              className={[
+                "absolute inset-0 hostops-money-shimmer",
+                "bg-[radial-gradient(circle_at_12px_12px,rgba(255,255,255,.34)_0,rgba(255,255,255,.34)_2px,transparent_3px)]",
+              ].join(" ")}
+            />
+            <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(0,0,0,.08),rgba(0,0,0,.08)_2px,transparent_2px,transparent_10px)] dark:bg-[repeating-linear-gradient(90deg,rgba(255,255,255,.09),rgba(255,255,255,.09)_2px,transparent_2px,transparent_10px)]" />
           </div>
         </div>
 
         {isProfitable ? (
-          <div className="pointer-events-none absolute inset-x-0 top-1 flex justify-center">
+          <div className="pointer-events-none absolute inset-x-0 top-1 flex justify-center hostops-money-bob">
             <div className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
               Profit
             </div>
