@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { BnbData, ExpenseItem, Property } from "@/lib/bnb/types";
 import {
@@ -10,10 +12,10 @@ import {
   deleteExpense,
   deleteBooking,
   deleteMonth,
-  setNotes,
   setPropertyRent,
   setPropertyListing,
   setPropertyMeta,
+  setPropertyName,
   setPropertyTenure,
   setRegion,
   updateExpense,
@@ -21,10 +23,12 @@ import {
 import {
   formatMonthLabel,
   formatMoney,
+  getCurrentMonthKey,
   getDefaultNewMonth,
   getCurrencyFractionDigits,
   getMonthTotals,
   isValidMonthKey,
+  isMonthKeyInFuture,
   parseMoneyToCents,
 } from "@/lib/bnb/utils";
 import { useBnbData } from "@/lib/bnb/useBnbData";
@@ -38,6 +42,7 @@ import { ListingIcon } from "@/app/_components/ui/ListingIcons";
 import { sanitizeExternalUrl } from "@/lib/bnb/url";
 import { buildReminders } from "@/lib/bnb/reminders";
 import { buildSummaryRows, type Period } from "@/lib/bnb/analysis";
+import { GroupedBarChart, ScatterChart, StackedBarChart } from "@/app/_components/ui/Charts";
 
 function Pill({
   children,
@@ -92,18 +97,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...props}
-      className={[
-        "min-h-[96px] w-full resize-y rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm",
-        "placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/20 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:focus:ring-zinc-100/20",
-        props.className ?? "",
-      ].join(" ")}
-    />
-  );
-}
+// Notes removed per product request.
 
 function Button({
   children,
@@ -183,40 +177,41 @@ export function BnbManagerApp() {
   const [newExpenseDesc, setNewExpenseDesc] = useState<string>("");
   const [newExpenseAmount, setNewExpenseAmount] = useState<string>("");
   const [newExpenseDay, setNewExpenseDay] = useState<string>("");
+  const [newExpenseMode, setNewExpenseMode] = useState<"flat" | "per_day">("flat");
+  const [newExpenseRatePerDay, setNewExpenseRatePerDay] = useState<string>("");
+  const [newExpenseDays, setNewExpenseDays] = useState<string>("");
   const [newExpensePropertyId, setNewExpensePropertyId] = useState<string>(
     settings.properties[0]?.id ?? "prop_default",
   );
   const [newPropertyName, setNewPropertyName] = useState<string>("");
-  const [openListingsForPropertyId, setOpenListingsForPropertyId] = useState<string | null>(null);
+  const [expandedPropertyIds, setExpandedPropertyIds] = useState<Record<string, boolean>>({});
+  const [renamingPropertyId, setRenamingPropertyId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState<string>("");
   const [view, setView] = useState<"tracker" | "analysis">("tracker");
   const [analysisPeriod, setAnalysisPeriod] = useState<Period>("monthly");
   const [analysisPropertyId, setAnalysisPropertyId] = useState<string>("all");
-  const [expenseQuery, setExpenseQuery] = useState<string>("");
-  const [expenseSort, setExpenseSort] = useState<"day" | "amount" | "recent">("day");
   const [confirm, setConfirm] = useState<
     | null
     | { kind: "month"; monthId: string }
     | { kind: "expense"; monthId: string; expenseId: string }
   >(null);
 
-  const selectedTotals = selected ? getMonthTotals(selected) : null;
-  const profitTrend = useMemo(() => {
+  const selectedTotals = selected ? getMonthTotals(selected, settings.properties) : null;
+  const profitTrend = (() => {
     const asc = [...data.months].sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
     const last = asc.slice(Math.max(0, asc.length - 12));
-    return last.map((m) => getMonthTotals(m).profitCents);
-  }, [data.months]);
+    return last.map((m) => getMonthTotals(m, settings.properties).profitCents);
+  })();
   const visibleExpenses = useMemo(() => {
     if (!selected) return [];
-    const q = expenseQuery.trim().toLowerCase();
-    const filtered = q
-      ? selected.expenses.filter((e) => e.description.toLowerCase().includes(q))
-      : selected.expenses;
-    return [...filtered].sort((a, b) => {
-      if (expenseSort === "amount") return b.amountCents - a.amountCents;
-      if (expenseSort === "recent") return b.updatedAt.localeCompare(a.updatedAt);
-      return (a.day ?? 999) - (b.day ?? 999);
+    // Keep the list simple: stable sort by day, then recent edits.
+    return [...selected.expenses].sort((a, b) => {
+      const ad = a.day ?? 999;
+      const bd = b.day ?? 999;
+      if (ad !== bd) return ad - bd;
+      return b.updatedAt.localeCompare(a.updatedAt);
     });
-  }, [selected, expenseQuery, expenseSort]);
+  }, [selected]);
 
   function commit(next: BnbData) {
     setData(next);
@@ -225,6 +220,11 @@ export function BnbManagerApp() {
   function onAddMonth() {
     const mk = newMonthKey.trim();
     if (!isValidMonthKey(mk)) return;
+    const nowKey = getCurrentMonthKey();
+    if (isMonthKeyInFuture(mk, nowKey)) {
+      toast("You can only add the current or previous months", "bad");
+      return;
+    }
     const next = addMonth(data, mk);
     commit(next);
     const created = next.months.find((m) => m.month === mk);
@@ -235,11 +235,23 @@ export function BnbManagerApp() {
   function onAddExpense() {
     if (!selected) return;
     const desc = newExpenseDesc.trim();
-    const cents = parseMoneyToCents(newExpenseAmount, fractionDigits);
     if (!desc) return;
-    if (cents === null) return;
     const day = newExpenseDay.trim() ? Number(newExpenseDay) : undefined;
     if (day !== undefined && (!Number.isInteger(day) || day < 1 || day > 31)) return;
+
+    const rate = parseMoneyToCents(newExpenseRatePerDay, fractionDigits);
+    const daysCount = newExpenseDays.trim() ? Number(newExpenseDays) : undefined;
+    const cents =
+      newExpenseMode === "per_day"
+        ? rate !== null && daysCount !== undefined
+          ? rate * daysCount
+          : null
+        : parseMoneyToCents(newExpenseAmount, fractionDigits);
+    if (newExpenseMode === "per_day") {
+      if (rate === null) return;
+      if (daysCount === undefined || !Number.isInteger(daysCount) || daysCount < 1) return;
+    }
+    if (cents === null || !Number.isFinite(cents)) return;
 
     commit(
       addExpense(data, selected.id, {
@@ -247,11 +259,16 @@ export function BnbManagerApp() {
         amountCents: cents,
         day,
         propertyId: newExpensePropertyId || undefined,
+        mode: newExpenseMode,
+        rateCentsPerDay: newExpenseMode === "per_day" ? (rate ?? undefined) : undefined,
+        days: newExpenseMode === "per_day" ? daysCount : undefined,
       }),
     );
     setNewExpenseDesc("");
     setNewExpenseAmount("");
     setNewExpenseDay("");
+    setNewExpenseRatePerDay("");
+    setNewExpenseDays("");
     toast("Expense added", "good");
   }
 
@@ -271,19 +288,29 @@ export function BnbManagerApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-white dark:from-black dark:to-zinc-950">
-      <div className="mx-auto max-w-6xl px-4 py-10">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
-            BnB Manager
-          </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Track monthly income, expenses, and profit/loss. Data is saved locally in
-            your browser.
-          </p>
+        <div className="flex items-start gap-3">
+          <div className="relative h-11 w-11 overflow-hidden rounded-xl ring-1 ring-inset ring-zinc-200 bg-white shadow-sm dark:ring-zinc-800 dark:bg-zinc-950">
+            <Image src="/hostops-logo.png" alt="HostOps logo" fill sizes="44px" className="object-cover" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+              HostOps
+            </h1>
+            <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              Run every property with clarity, control, and confidence.
+            </p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-500">
+              Local-first. Data stays in your browser.{" "}
+              <Link className="underline underline-offset-2" href="/help">
+                Help
+              </Link>
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <div className="flex rounded-xl ring-1 ring-inset ring-zinc-200 bg-white p-1 shadow-sm dark:ring-zinc-800 dark:bg-zinc-950">
             <button
               type="button"
@@ -309,9 +336,21 @@ export function BnbManagerApp() {
             >
               Analysis
             </button>
+            <Link
+              href="/help"
+              title="Help"
+              className="ml-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z" />
+                <path d="M12 6.5c-2.1 0-3.7 1.3-3.7 3.1a1 1 0 1 0 2 0c0-.7.7-1.1 1.7-1.1.9 0 1.6.4 1.6 1.1 0 .5-.3.8-1 1.2-1.3.7-2 1.6-2 3.2v.2a1 1 0 1 0 2 0V14c0-1 .3-1.3 1-1.7 1.2-.7 2-1.6 2-3.1 0-1.8-1.6-3.1-3.6-3.1Z" />
+                <path d="M12 17.6a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z" />
+              </svg>
+              <span className="sr-only">Help</span>
+            </Link>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white p-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <div className="grid gap-1">
+          <div className="flex w-full flex-col gap-2 rounded-xl border border-zinc-200 bg-white p-2 shadow-sm sm:w-auto sm:flex-row sm:items-center dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="grid gap-1 sm:min-w-[170px]">
               <SmallLabel>Region</SmallLabel>
               <select
                 value={settings.region ?? "india"}
@@ -319,7 +358,7 @@ export function BnbManagerApp() {
                   const v = e.target.value as "india" | "us" | "europe" | "uk";
                   commit(setRegion(data, v));
                 }}
-                className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
               >
                 <option value="india">India (INR)</option>
                 <option value="us">US (USD)</option>
@@ -327,22 +366,23 @@ export function BnbManagerApp() {
                 <option value="uk">UK (GBP)</option>
               </select>
             </div>
-            <div className="grid gap-1">
+            <div className="grid gap-1 sm:min-w-[110px]">
               <SmallLabel>Currency</SmallLabel>
-              <div className="h-10 min-w-[84px] rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold leading-10 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+              <div className="h-10 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold leading-10 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
                 {settings.currency}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <TextInput
               type="month"
               value={newMonthKey}
               onChange={(e) => setNewMonthKey(e.target.value)}
               aria-label="Month to add"
-              className="w-[170px]"
+              max={getCurrentMonthKey()}
+              className="w-full sm:w-[170px]"
             />
-            <Button onClick={onAddMonth} disabled={!isValidMonthKey(newMonthKey)}>
+            <Button className="w-full sm:w-auto" onClick={onAddMonth} disabled={!isValidMonthKey(newMonthKey)}>
               Add month
             </Button>
           </div>
@@ -398,7 +438,7 @@ export function BnbManagerApp() {
       {view === "tracker" ? (
       <div className="mt-6 grid gap-3 md:grid-cols-4">
         <MetricCard
-          label={selected ? `Income • ${formatMonthLabel(selected.month)}` : "Income"}
+          label={selected ? `Revenue • ${formatMonthLabel(selected.month)}` : "Revenue"}
           value={
             selectedTotals
               ? formatMoney(selectedTotals.incomeCents, moneyOpts)
@@ -406,7 +446,7 @@ export function BnbManagerApp() {
           }
         />
         <MetricCard
-          label={selected ? `Expenses • ${formatMonthLabel(selected.month)}` : "Expenses"}
+          label={selected ? `Costs • ${formatMonthLabel(selected.month)}` : "Costs"}
           value={
             selectedTotals
               ? formatMoney(selectedTotals.expensesCents, moneyOpts)
@@ -451,7 +491,7 @@ export function BnbManagerApp() {
               </div>
             ) : (
               monthsSorted.map((m) => {
-                const totals = getMonthTotals(m);
+                const totals = getMonthTotals(m, settings.properties);
                 const selectedCls =
                   selected?.id === m.id
                     ? "ring-2 ring-zinc-900/10 dark:ring-zinc-100/10"
@@ -476,11 +516,11 @@ export function BnbManagerApp() {
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                       <div>
-                        <span className="font-medium">Income:</span>{" "}
+                        <span className="font-medium">Revenue:</span>{" "}
                         {formatMoney(totals.incomeCents, moneyOpts)}
                       </div>
                       <div>
-                        <span className="font-medium">Expenses:</span>{" "}
+                        <span className="font-medium">Costs:</span>{" "}
                         {formatMoney(totals.expensesCents, moneyOpts)}
                       </div>
                     </div>
@@ -506,10 +546,10 @@ export function BnbManagerApp() {
                   {selectedTotals && (
                     <div className="flex flex-wrap items-center gap-2">
                       <Pill tone="neutral">
-                        Expenses: {formatMoney(selectedTotals.expensesCents, moneyOpts)}
+                        Costs: {formatMoney(selectedTotals.expensesCents, moneyOpts)}
                       </Pill>
                       <Pill tone="neutral">
-                        Income: {formatMoney(selectedTotals.incomeCents, moneyOpts)}
+                        Revenue: {formatMoney(selectedTotals.incomeCents, moneyOpts)}
                       </Pill>
                       <Pill
                         tone={
@@ -540,7 +580,7 @@ export function BnbManagerApp() {
                 <div className="space-y-2">
                   <SmallLabel>Properties</SmallLabel>
                   <div className="space-y-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <TextInput
                         placeholder="Add property (e.g. Goa Studio)"
                         value={newPropertyName}
@@ -548,6 +588,7 @@ export function BnbManagerApp() {
                       />
                       <Button
                         variant="secondary"
+                        className="w-full sm:w-auto"
                         onClick={() => {
                           const name = newPropertyName.trim();
                           if (!name) return;
@@ -594,11 +635,71 @@ export function BnbManagerApp() {
                             key={p.id}
                             className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
                           >
-                            <div className="flex items-start justify-between gap-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
-                                  {p.name}
+                                <div className="flex items-center justify-between gap-2">
+                                  {renamingPropertyId === p.id ? (
+                                    <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+                                      <TextInput
+                                        value={renameDraft}
+                                        onChange={(e) => setRenameDraft(e.target.value)}
+                                        className="h-9"
+                                        placeholder="Property name"
+                                      />
+                                      <Button
+                                        variant="secondary"
+                                        className="h-9 w-full sm:w-auto"
+                                        onClick={() => {
+                                          const next = renameDraft.trim();
+                                          if (!next) return;
+                                          commit(setPropertyName(data, p.id, next));
+                                          setRenamingPropertyId(null);
+                                          toast("Property renamed", "good");
+                                        }}
+                                      >
+                                        Save
+                                      </Button>
+                                      <Button
+                                        variant="secondary"
+                                        className="h-9 w-full sm:w-auto"
+                                        onClick={() => setRenamingPropertyId(null)}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="truncate text-sm font-semibold text-zinc-950 dark:text-zinc-50">
+                                        {p.name}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setRenamingPropertyId(p.id);
+                                          setRenameDraft(p.name);
+                                        }}
+                                        className="rounded-lg px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                                      >
+                                        Rename
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
+                                {(() => {
+                                  if (!p.agreementValidUntil) return null;
+                                  const daysLeft = daysUntilLocalDate(p.agreementValidUntil);
+                                  if (daysLeft === null) return null;
+                                  // "Only 1 month left" => within 30 days.
+                                  if (daysLeft > 30) return null;
+                                  if (daysLeft < 0) {
+                                    return <Pill tone="bad">Agreement expired</Pill>;
+                                  }
+                                  return (
+                                    <Pill tone={daysLeft <= 7 ? "bad" : "neutral"}>
+                                      Renew in {daysLeft} day(s)
+                                    </Pill>
+                                  );
+                                })()}
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                                   <Pill tone="neutral">
                                     Revenue: {formatMoney(revenue, moneyOpts)}
@@ -611,8 +712,8 @@ export function BnbManagerApp() {
                                   </Pill>
                                 </div>
 
-                                <div className="mt-3 flex items-center justify-between gap-3">
-                                  <div className="flex items-center gap-2">
+                                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     {(() => {
                                       const link = p.listings?.airbnb;
                                       const href = link?.url ? sanitizeExternalUrl(link.url) : undefined;
@@ -651,27 +752,30 @@ export function BnbManagerApp() {
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      setOpenListingsForPropertyId(
-                                        openListingsForPropertyId === p.id ? null : p.id,
-                                      )
+                                      setExpandedPropertyIds((prev) => ({
+                                        ...prev,
+                                        [p.id]: !prev[p.id],
+                                      }))
                                     }
                                     className="rounded-lg px-3 py-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
                                   >
-                                    Listings
+                                    {expandedPropertyIds[p.id] ? "Collapse" : "Expand"}
                                   </button>
                                 </div>
                               </div>
-                              <MoneyDrum
-                                revenueMinor={revenue}
-                                totalCostMinor={totalCost}
-                                baseRentMinor={baseRentCost}
-                                operatingCostMinor={operatingCost}
-                                scaleMaxMinor={maxCost}
-                                variant={p.tenure === "owned" ? "owned" : "rented"}
-                              />
+                              <div className="self-end sm:self-auto">
+                                <MoneyDrum
+                                  revenueMinor={revenue}
+                                  totalCostMinor={totalCost}
+                                  baseRentMinor={baseRentCost}
+                                  operatingCostMinor={operatingCost}
+                                  scaleMaxMinor={maxCost}
+                                  variant={p.tenure === "owned" ? "owned" : "rented"}
+                                />
+                              </div>
                             </div>
 
-                            {openListingsForPropertyId === p.id ? (
+                            {expandedPropertyIds[p.id] ? (
                               <div className="mt-3 grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
                                 <SmallLabel>Listing links</SmallLabel>
                                 {(["airbnb", "booking", "other"] as const).map((provider) => {
@@ -714,6 +818,7 @@ export function BnbManagerApp() {
                                 })}
                               </div>
                             ) : null}
+                            {expandedPropertyIds[p.id] ? (
                             <div className="mt-3 grid gap-2">
                               <div className="grid gap-1">
                                 <SmallLabel>Tenure</SmallLabel>
@@ -816,20 +921,14 @@ export function BnbManagerApp() {
                                 }}
                               />
                             </div>
+                            ) : null}
                           </div>
                         );
                       })}
                     </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <SmallLabel>Notes (optional)</SmallLabel>
-                  <TextArea
-                    placeholder="Cleaning schedule, special events, repairs..."
-                    value={selected.notes ?? ""}
-                    onChange={(e) => commit(setNotes(data, selected.id, e.target.value))}
-                  />
-                </div>
+                {/* Notes removed */}
               </div>
 
               <div className="space-y-3">
@@ -839,61 +938,9 @@ export function BnbManagerApp() {
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <TextInput
-                      placeholder="Search expenses…"
-                      value={expenseQuery}
-                      onChange={(e) => setExpenseQuery(e.target.value)}
-                      className="sm:max-w-xs"
-                    />
-                    <div className="flex items-center gap-2">
-                      <SmallLabel>Sort</SmallLabel>
-                      <div className="flex rounded-lg ring-1 ring-inset ring-zinc-200 dark:ring-zinc-800">
-                        <button
-                          type="button"
-                          onClick={() => setExpenseSort("day")}
-                          className={[
-                            "h-10 px-3 text-sm font-medium",
-                            expenseSort === "day"
-                              ? "bg-white text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50"
-                              : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
-                            "rounded-l-lg",
-                          ].join(" ")}
-                        >
-                          Day
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setExpenseSort("amount")}
-                          className={[
-                            "h-10 px-3 text-sm font-medium",
-                            expenseSort === "amount"
-                              ? "bg-white text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50"
-                              : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
-                          ].join(" ")}
-                        >
-                          Amount
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setExpenseSort("recent")}
-                          className={[
-                            "h-10 px-3 text-sm font-medium",
-                            expenseSort === "recent"
-                              ? "bg-white text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50"
-                              : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900",
-                            "rounded-r-lg",
-                          ].join(" ")}
-                        >
-                          Recent
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="flex flex-wrap items-center gap-2">
                     <SmallLabel>Quick add</SmallLabel>
-                    {["Cleaning", "Supplies", "Utilities", "Repairs", "Maintenance"].map((s) => (
+                    {["Cleaning", "Supplies", "Utilities", "Repairs", "Maintenance", "Other"].map((s) => (
                       <button
                         key={s}
                         type="button"
@@ -913,7 +960,7 @@ export function BnbManagerApp() {
                   <Button
                     variant="secondary"
                     onClick={() => {
-                      const csv = monthToCsv(selected, moneyOpts);
+                      const csv = monthToCsv(selected, { ...moneyOpts, properties: settings.properties });
                       downloadTextFile(`bnb-finances-${selected.month}.csv`, csv);
                       toast("Export downloaded", "good");
                     }}
@@ -928,7 +975,7 @@ export function BnbManagerApp() {
                       <tr>
                         <th className="px-3 py-2 text-left font-semibold">Day</th>
                         <th className="px-3 py-2 text-left font-semibold">Description</th>
-                        <th className="px-3 py-2 text-right font-semibold">Amount</th>
+                        <th className="px-3 py-2 text-right font-semibold">Monthly cost</th>
                         <th className="px-3 py-2 text-right font-semibold">Actions</th>
                       </tr>
                     </thead>
@@ -943,35 +990,23 @@ export function BnbManagerApp() {
                           </td>
                         </tr>
                       ) : (
-                        visibleExpenses.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={4}
-                              className="px-3 py-6 text-center text-sm text-zinc-600 dark:text-zinc-400"
-                            >
-                              No matching expenses.
-                            </td>
-                          </tr>
-                        ) : (
-                          visibleExpenses.map((ex) => (
-                            <ExpenseRow
-                              key={ex.id}
-                              expense={ex}
-                              properties={settings.properties}
-                              fractionDigits={fractionDigits}
-                              onUpdate={(patch) =>
-                                commit(updateExpense(data, selected.id, ex.id, patch))
-                              }
-                              onRequestDelete={() =>
-                                setConfirm({
-                                  kind: "expense",
-                                  monthId: selected.id,
-                                  expenseId: ex.id,
-                                })
-                              }
-                            />
-                          ))
-                        )
+                        visibleExpenses.map((ex) => (
+                          <ExpenseRow
+                            key={ex.id}
+                            expense={ex}
+                            properties={settings.properties}
+                            fractionDigits={fractionDigits}
+                            moneyOpts={moneyOpts}
+                            onUpdate={(patch) => commit(updateExpense(data, selected.id, ex.id, patch))}
+                            onRequestDelete={() =>
+                              setConfirm({
+                                kind: "expense",
+                                monthId: selected.id,
+                                expenseId: ex.id,
+                              })
+                            }
+                          />
+                        ))
                       )}
 
                       <tr className="bg-zinc-50/60 dark:bg-zinc-900/30">
@@ -1004,12 +1039,54 @@ export function BnbManagerApp() {
                           </div>
                         </td>
                         <td className="px-3 py-2 align-top">
-                          <TextInput
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={newExpenseAmount}
-                            onChange={(e) => setNewExpenseAmount(e.target.value)}
-                          />
+                          <div className="grid gap-2">
+                            <select
+                              value={newExpenseMode}
+                              onChange={(e) =>
+                                setNewExpenseMode(e.target.value === "per_day" ? "per_day" : "flat")
+                              }
+                              className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                            >
+                              <option value="flat">Flat amount</option>
+                              <option value="per_day">Per-day amount</option>
+                            </select>
+                            {newExpenseMode === "per_day" ? (
+                              <div className="grid grid-cols-2 gap-2">
+                                <TextInput
+                                  inputMode="decimal"
+                                  placeholder="Rate/day"
+                                  value={newExpenseRatePerDay}
+                                  onChange={(e) => setNewExpenseRatePerDay(e.target.value)}
+                                />
+                                <TextInput
+                                  inputMode="numeric"
+                                  placeholder="Days"
+                                  value={newExpenseDays}
+                                  onChange={(e) => setNewExpenseDays(e.target.value)}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                          {newExpenseMode === "flat" ? (
+                            <TextInput
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={newExpenseAmount}
+                              onChange={(e) => setNewExpenseAmount(e.target.value)}
+                            />
+                          ) : (
+                            <div className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                              Monthly cost:{" "}
+                              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+                                {(() => {
+                                  const rate = parseMoneyToCents(newExpenseRatePerDay, fractionDigits);
+                                  const d = newExpenseDays.trim() ? Number(newExpenseDays) : NaN;
+                                  if (rate === null || !Number.isInteger(d) || d < 1) return "—";
+                                  return formatMoney(rate * d, moneyOpts);
+                                })()}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2 align-top text-right">
                           <Button
@@ -1017,7 +1094,11 @@ export function BnbManagerApp() {
                             onClick={onAddExpense}
                             disabled={
                               !newExpenseDesc.trim() ||
-                              parseMoneyToCents(newExpenseAmount, fractionDigits) === null
+                              (newExpenseMode === "flat"
+                                ? parseMoneyToCents(newExpenseAmount, fractionDigits) === null
+                                : parseMoneyToCents(newExpenseRatePerDay, fractionDigits) === null ||
+                                  !Number.isInteger(Number(newExpenseDays.trim())) ||
+                                  Number(newExpenseDays.trim()) < 1)
                             }
                           >
                             Add
@@ -1082,29 +1163,68 @@ function ExpenseRow({
   expense,
   properties,
   fractionDigits,
+  moneyOpts,
   onUpdate,
   onRequestDelete,
 }: {
   expense: ExpenseItem;
   properties: Property[];
   fractionDigits: number;
-  onUpdate: (patch: Partial<Pick<ExpenseItem, "description" | "amountCents" | "day" | "propertyId">>) => void;
+  moneyOpts: { currency: string; locale: string };
+  onUpdate: (
+    patch: Partial<
+      Pick<
+        ExpenseItem,
+        "description" | "amountCents" | "day" | "propertyId" | "mode" | "rateCentsPerDay" | "days"
+      >
+    >,
+  ) => void;
   onRequestDelete: () => void;
 }) {
   const [desc, setDesc] = useState(expense.description);
-  const [amount, setAmount] = useState((expense.amountCents / 100).toFixed(2));
+  const [mode, setMode] = useState<"flat" | "per_day">(expense.mode ?? "flat");
+  const unit = Math.pow(10, fractionDigits);
+  const [amount, setAmount] = useState((expense.amountCents / unit).toFixed(fractionDigits));
+  const [ratePerDay, setRatePerDay] = useState(
+    expense.rateCentsPerDay ? (expense.rateCentsPerDay / unit).toFixed(fractionDigits) : "",
+  );
+  const [daysCount, setDaysCount] = useState(expense.days ? String(expense.days) : "");
   const [day, setDay] = useState(expense.day ? String(expense.day) : "");
   const [propId, setPropId] = useState(expense.propertyId ?? properties[0]?.id ?? "");
 
   function commit() {
     const nextDesc = desc.trim();
     if (!nextDesc) return;
-    const cents = parseMoneyToCents(amount, fractionDigits);
-    if (cents === null) return;
+    const rate = parseMoneyToCents(ratePerDay, fractionDigits);
+    const dcount = daysCount.trim() ? Number(daysCount) : undefined;
+    const cents =
+      mode === "per_day"
+        ? rate !== null && dcount !== undefined
+          ? rate * dcount
+          : null
+        : parseMoneyToCents(amount, fractionDigits);
+    if (mode === "per_day") {
+      if (rate === null) return;
+      if (dcount === undefined || !Number.isInteger(dcount) || dcount < 1) return;
+    }
+    if (cents === null || !Number.isFinite(cents)) return;
     const nextDay = day.trim() ? Number(day) : undefined;
     if (nextDay !== undefined && (!Number.isInteger(nextDay) || nextDay < 1 || nextDay > 31)) return;
-    onUpdate({ description: nextDesc, amountCents: cents, day: nextDay, propertyId: propId || undefined });
+    onUpdate({
+      description: nextDesc,
+      amountCents: cents,
+      day: nextDay,
+      propertyId: propId || undefined,
+      mode,
+      rateCentsPerDay: mode === "per_day" ? (rate ?? undefined) : undefined,
+      days: mode === "per_day" ? dcount : undefined,
+    });
   }
+
+  const monthlyCostCents =
+    mode === "per_day" && expense.rateCentsPerDay && expense.days
+      ? expense.rateCentsPerDay * expense.days
+      : expense.amountCents;
 
   return (
     <tr>
@@ -1131,16 +1251,57 @@ function ExpenseRow({
         </div>
       </td>
       <td className="px-3 py-2 align-top text-right">
-        <TextInput
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          onBlur={() => {
-            const cents = parseMoneyToCents(amount, fractionDigits);
-            if (cents !== null) setAmount((cents / 100).toFixed(2));
-            commit();
-          }}
-        />
+        <div className="grid gap-2">
+          <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            {formatMoney(monthlyCostCents, moneyOpts)}
+          </div>
+          <select
+            value={mode}
+            onChange={(e) => {
+              const next = e.target.value === "per_day" ? "per_day" : "flat";
+              setMode(next);
+              onUpdate({ mode: next });
+            }}
+            className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+          >
+            <option value="flat">Flat</option>
+            <option value="per_day">Per-day</option>
+          </select>
+
+          {mode === "per_day" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <TextInput
+                inputMode="decimal"
+                value={ratePerDay}
+                onChange={(e) => setRatePerDay(e.target.value)}
+                onBlur={commit}
+                placeholder="Rate/day"
+              />
+              <TextInput
+                inputMode="numeric"
+                value={daysCount}
+                onChange={(e) => setDaysCount(e.target.value)}
+                onBlur={commit}
+                placeholder="Days"
+              />
+            </div>
+          ) : null}
+
+          {mode === "flat" ? (
+            <TextInput
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onBlur={() => {
+                const cents = parseMoneyToCents(amount, fractionDigits);
+                if (cents !== null) setAmount((cents / unit).toFixed(fractionDigits));
+                commit();
+              }}
+            />
+          ) : (
+            <div className="text-[11px] text-zinc-500 dark:text-zinc-500">Monthly cost is rate/day × days.</div>
+          )}
+        </div>
       </td>
       <td className="px-3 py-2 align-top text-right">
         <div className="flex justify-end gap-2">
@@ -1161,6 +1322,18 @@ function ExpenseRow({
   );
 }
 
+function daysUntilLocalDate(dateStr: string): number | null {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dateStr)) return null;
+  const [y, m, d] = dateStr.split("-").map((x) => Number(x));
+  const end = new Date(y, m - 1, d);
+  if (!Number.isFinite(end.getTime())) return null;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const diffMs = startOfEnd.getTime() - startOfToday.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
 function BookingMini({
   property,
   bookings,
@@ -1179,6 +1352,16 @@ function BookingMini({
   const [ppn, setPpn] = useState<string>("");
 
   const list = bookings.filter((b) => b.propertyId === property.id);
+  const byDay = useMemo(() => {
+    const m = new Map<number, typeof list>();
+    for (const b of list) {
+      if (!b.day) continue;
+      const arr = m.get(b.day) ?? [];
+      arr.push(b);
+      m.set(b.day, arr);
+    }
+    return [...m.entries()].sort((a, b) => a[0] - b[0]);
+  }, [list]);
 
   return (
     <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/50 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
@@ -1187,28 +1370,36 @@ function BookingMini({
         <Pill tone="neutral">{list.length}</Pill>
       </div>
 
-      {list.length > 0 ? (
+      {byDay.length > 0 ? (
         <div className="mt-2 space-y-2">
-          {list.slice(0, 3).map((b) => (
-            <div
-              key={b.id}
-              className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 text-xs ring-1 ring-inset ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800"
-            >
-              <div className="min-w-0 truncate text-zinc-700 dark:text-zinc-300">
-                {b.day ? `Day ${b.day} • ` : ""}
-                {b.nights} night(s) @ {b.pricePerNightCents / Math.pow(10, fractionDigits)}
+          {byDay.slice(0, 7).map(([d, items]) => (
+            <div key={d} className="rounded-lg bg-white p-2 text-xs ring-1 ring-inset ring-zinc-200 dark:bg-zinc-950 dark:ring-zinc-800">
+              <div className="flex items-center justify-between">
+                <div className="font-medium text-zinc-800 dark:text-zinc-200">Day {d}</div>
+                <div className="text-zinc-500 dark:text-zinc-500">{items.length} booking(s)</div>
               </div>
-              <button
-                type="button"
-                onClick={() => onDelete(b.id)}
-                className="rounded-md px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
-              >
-                Delete
-              </button>
+              <div className="mt-1 space-y-1">
+                {items.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 truncate text-zinc-700 dark:text-zinc-300">
+                      {b.nights} night(s) @ {b.pricePerNightCents / Math.pow(10, fractionDigits)}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(b.id)}
+                      className="rounded-md px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
-          {list.length > 3 ? (
-            <div className="text-xs text-zinc-500 dark:text-zinc-500">Showing 3 of {list.length}</div>
+          {byDay.length > 7 ? (
+            <div className="text-xs text-zinc-500 dark:text-zinc-500">
+              Showing 7 day(s) of {byDay.length}
+            </div>
           ) : null}
         </div>
       ) : (
@@ -1218,7 +1409,7 @@ function BookingMini({
       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
         <TextInput
           inputMode="numeric"
-          placeholder="Day"
+          placeholder="Day (1-31)"
           value={day}
           onChange={(e) => setDay(e.target.value)}
         />
@@ -1243,14 +1434,19 @@ function BookingMini({
               if (!Number.isInteger(n) || n < 1) return;
               const priceMinor = parseMoneyToCents(ppn, fractionDigits);
               if (priceMinor === null) return;
-              const d = day.trim() ? Number(day) : undefined;
-              if (d !== undefined && (!Number.isInteger(d) || d < 1 || d > 31)) return;
+              const d = Number(day.trim());
+              if (!Number.isInteger(d) || d < 1 || d > 31) return;
               onAdd({ propertyId: property.id, nights: n, pricePerNightCents: priceMinor, day: d });
               setDay("");
               setNights("1");
               setPpn("");
             }}
-            disabled={parseMoneyToCents(ppn, fractionDigits) === null}
+            disabled={
+              parseMoneyToCents(ppn, fractionDigits) === null ||
+              !Number.isInteger(Number(day.trim())) ||
+              Number(day.trim()) < 1 ||
+              Number(day.trim()) > 31
+            }
           >
             Add booking
           </Button>
@@ -1277,6 +1473,8 @@ function AnalysisPanel({
   propertyId: string;
   setPropertyId: (id: string) => void;
 }) {
+  const [comparePeriodKey, setComparePeriodKey] = useState<string>("");
+
   const rows = useMemo(
     () =>
       buildSummaryRows({
@@ -1287,6 +1485,40 @@ function AnalysisPanel({
       }),
     [data, properties, period, propertyId],
   );
+
+  const defaultCompareKey = rows.length ? rows[rows.length - 1]!.period : "";
+  const effectiveCompareKey =
+    comparePeriodKey && rows.some((r) => r.period === comparePeriodKey) ? comparePeriodKey : defaultCompareKey;
+
+  const propertyCompareRows = useMemo(() => {
+    if (propertyId !== "all") return [];
+    if (!effectiveCompareKey) return [];
+    return [...properties]
+      .map((p) => {
+        const propRows = buildSummaryRows({ data, properties, period, propertyId: p.id });
+        const row =
+          propRows.find((r) => r.period === effectiveCompareKey) ??
+          ({
+            period: effectiveCompareKey,
+            revenueCents: 0,
+            operatingCostCents: 0,
+            baseRentCostCents: 0,
+            totalCostCents: 0,
+            profitCents: 0,
+            nights: 0,
+          } as const);
+        return {
+          id: p.id,
+          label: p.name,
+          a: row.revenueCents,
+          b: row.totalCostCents,
+          aLabel: "Revenue",
+          bLabel: "Cost",
+          profitCents: row.profitCents,
+        };
+      })
+      .sort((a, b) => b.profitCents - a.profitCents);
+  }, [data, properties, period, propertyId, effectiveCompareKey]);
   const totals = rows.reduce(
     (acc, r) => {
       acc.revenue += r.revenueCents;
@@ -1297,6 +1529,25 @@ function AnalysisPanel({
     },
     { revenue: 0, cost: 0, profit: 0, nights: 0 },
   );
+
+  const chartRows = rows.slice(-8).map((r) => ({
+    label: r.period,
+    a: r.revenueCents,
+    b: r.totalCostCents,
+    aLabel: "Revenue",
+    bLabel: "Cost",
+  }));
+  const costRows = rows.slice(-8).map((r) => ({
+    label: r.period,
+    parts: [
+      { label: "Base rent", value: r.baseRentCostCents, className: "bg-amber-500/70" },
+      { label: "Operating", value: r.operatingCostCents, className: "bg-rose-500/60" },
+    ],
+  }));
+  const nightsRows = rows.slice(-8).map((r) => ({
+    label: r.period,
+    parts: [{ label: "Nights booked", value: r.nights, className: "bg-sky-500/70" }],
+  }));
 
   return (
     <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -1339,6 +1590,22 @@ function AnalysisPanel({
               ))}
             </select>
           </div>
+          {propertyId === "all" && rows.length > 0 ? (
+            <div className="grid gap-1">
+              <SmallLabel>Compare period</SmallLabel>
+              <select
+                value={effectiveCompareKey}
+                onChange={(e) => setComparePeriodKey(e.target.value)}
+                className="h-10 rounded-lg border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                {rows.map((r) => (
+                  <option key={r.period} value={r.period}>
+                    {r.period}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1359,6 +1626,43 @@ function AnalysisPanel({
           </div>
         </div>
       </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <GroupedBarChart
+          title="Revenue vs Cost (last 8 periods)"
+          rows={chartRows}
+          formatValue={(v) => formatMoney(v, moneyOpts)}
+          aColorClass="bg-emerald-500/70"
+          bColorClass="bg-rose-500/60"
+        />
+        <StackedBarChart
+          title="Cost breakdown (last 8 periods)"
+          rows={costRows}
+          formatValue={(v) => formatMoney(v, moneyOpts)}
+        />
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <StackedBarChart title="Nights booked (last 8 periods)" rows={nightsRows} formatValue={(v) => String(v)} />
+      </div>
+
+      {propertyId === "all" && propertyCompareRows.length > 0 ? (
+        <div className="mt-3">
+          <ScatterChart
+            title={`Property performance (X: revenue, Y: cost) — ${effectiveCompareKey}`}
+            points={propertyCompareRows.map((r) => ({
+              id: r.id,
+              label: r.label,
+              x: r.a,
+              y: r.b,
+              profit: r.a - r.b,
+            }))}
+            formatValue={(v) => formatMoney(v, moneyOpts)}
+            xLabel="Revenue"
+            yLabel="Cost"
+          />
+        </div>
+      ) : null}
 
       <div className="mt-5 overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
         <table className="min-w-full text-sm">

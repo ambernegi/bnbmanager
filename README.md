@@ -1,4 +1,15 @@
-## BnB Manager
+## HostOps
+
+![HostOps logo](./public/hostops-logo.png)
+
+**Run every property with clarity, control, and confidence.**
+
+Help guide: see [`HELP.md`](./HELP.md)
+
+HostOps — Smarter operations for every property you manage.  
+HostOps — The command center for modern property operations.  
+HostOps — Simplify operations. Maximize performance.  
+HostOps — From finances to insights, all in one place.
 
 Simple “one stop shop” tracker for monthly **income**, **expenses**, and **profit/loss**.
 
@@ -19,7 +30,7 @@ Simple “one stop shop” tracker for monthly **income**, **expenses**, and **p
 - **Listing links** per property: Airbnb / Booking.com / Other (icon is colored when listing is active)
 - **Expenses** (line items with optional day-of-month, tagged to a property)
 - **Profit/Loss** (auto-calculated: income − expenses)
-- **Upcoming months**: month picker defaults to **next month** for faster planning
+- **Month control**: only **current and previous** months can be added
 - **Animated Money Drum** per property (green = rent, red = operating cost portion)
 
 ## Getting Started
@@ -43,7 +54,7 @@ npm run lint
 
 ## Using the App
 
-- **Add month**: use the month picker (defaults to next month) and click “Add month”.
+- **Add month**: use the month picker and click “Add month” (future months are blocked).
 - **Currency / Location**: set currency (defaults to **INR**) and locale (defaults to **en-IN**) in the header.
 - **Region**: choose one of **India / US / Europe / UK** (currency auto-matches region).
 - **Properties**: add properties inside a month, then set monthly rent per property.
@@ -95,5 +106,10 @@ npm run dev -- --hostname 127.0.0.1 --port 3000
 
 ## Tech Notes
 
-- Built with Next.js App Router + Tailwind.
-- Uses `next/font` to load Geist fonts.
+## Tech Used
+
+- **Framework**: Next.js (App Router) + TypeScript
+- **UI**: React + Tailwind CSS
+- **Storage**: browser `localStorage` (no backend)
+- **Deploy**: Vercel (works with `next build`)
+- **Charts**: lightweight SVG + Tailwind (no charting dependencies)

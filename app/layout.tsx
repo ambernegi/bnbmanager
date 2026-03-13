@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BnB Manager",
-  description: "Track monthly income, expenses, and profit/loss for your rental.",
+  title: "HostOps",
+  description: "HostOps: local-first operations + finance tracker for your short-term rentals.",
 };
 
 export default function RootLayout({

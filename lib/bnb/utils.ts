@@ -1,5 +1,4 @@
-import type { MonthEntry } from "@/lib/bnb/types";
-import type { BookingItem, Region } from "@/lib/bnb/types";
+import type { BookingItem, MonthEntry, Property, Region } from "@/lib/bnb/types";
 
 export const DEFAULT_CURRENCY = "INR";
 export const DEFAULT_LOCALE = "en-IN";
@@ -106,21 +105,44 @@ export function nowIso(): string {
 }
 
 export function getDefaultNewMonth(): string {
-  // Default to next month so it's easy to create upcoming month entries.
+  // Default to current month (we only allow adding current and previous months).
   const d = new Date();
-  d.setMonth(d.getMonth() + 1);
   const y = d.getFullYear();
   const m = d.getMonth() + 1;
   const mm = String(m).padStart(2, "0");
   return `${y}-${mm}`;
 }
 
-export function getMonthTotals(month: MonthEntry): {
+export function getCurrentMonthKey(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const mm = String(m).padStart(2, "0");
+  return `${y}-${mm}`;
+}
+
+export function isMonthKeyInFuture(monthKey: string, nowKey: string): boolean {
+  if (!isValidMonthKey(monthKey)) return false;
+  if (!isValidMonthKey(nowKey)) return false;
+  return monthKey > nowKey; // lexicographic works for YYYY-MM
+}
+
+export function getMonthTotals(
+  month: MonthEntry,
+  properties?: Property[],
+): {
   incomeCents: number;
   expensesCents: number;
   profitCents: number;
 } {
-  const baseRentCostCents = month.properties?.reduce((sum, p) => sum + p.rentCents, 0) ?? 0;
+  const tenureById = new Map<string, Property["tenure"]>(
+    (properties ?? []).map((p) => [p.id, p.tenure]),
+  );
+  const baseRentCostCents =
+    month.properties?.reduce((sum, p) => {
+      const tenure = tenureById.get(p.propertyId);
+      return sum + (tenure === "rented" ? p.rentCents : 0);
+    }, 0) ?? 0;
   const operatingCostCents = month.expenses.reduce((sum, e) => sum + e.amountCents, 0);
   const totalCostCents = baseRentCostCents + operatingCostCents;
   const revenueCents = (month.bookings ?? []).reduce(
@@ -130,7 +152,11 @@ export function getMonthTotals(month: MonthEntry): {
   // Keep field names for UI compatibility:
   // - incomeCents => revenue
   // - expensesCents => total costs
-  return { incomeCents: revenueCents, expensesCents: totalCostCents, profitCents: revenueCents - totalCostCents };
+  return {
+    incomeCents: revenueCents,
+    expensesCents: totalCostCents,
+    profitCents: revenueCents - totalCostCents,
+  };
 }
 
 export function getBookingRevenueCents(b: BookingItem): number {

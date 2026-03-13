@@ -1,4 +1,4 @@
-import type { MonthEntry } from "@/lib/bnb/types";
+import type { MonthEntry, Property } from "@/lib/bnb/types";
 import { formatMoney, getMonthTotals } from "@/lib/bnb/utils";
 
 function csvEscape(value: string): string {
@@ -20,9 +20,9 @@ function row(cols: string[]): string {
 
 export function monthToCsv(
   month: MonthEntry,
-  opts?: { currency?: string; locale?: string },
+  opts?: { currency?: string; locale?: string; properties?: Property[] },
 ): string {
-  const totals = getMonthTotals(month);
+  const totals = getMonthTotals(month, opts?.properties);
 
   const lines: string[] = [];
   lines.push(row(["Month", month.month]));
@@ -30,14 +30,22 @@ export function monthToCsv(
   lines.push(row(["Total Expenses", formatMoney(totals.expensesCents, opts)]));
   lines.push(row(["Profit/Loss", formatMoney(totals.profitCents, opts)]));
   lines.push(""); // blank line
-  lines.push(row(["Day", "Description", "Amount"]));
+  lines.push(row(["Day", "Property", "Description", "Mode", "Rate/Day", "Days", "Amount"]));
 
   const expenses = [...month.expenses].sort((a, b) => (a.day ?? 999) - (b.day ?? 999));
   for (const ex of expenses) {
+    const propName =
+      opts?.properties?.find((p) => p.id === ex.propertyId)?.name ?? ex.propertyId ?? "";
     lines.push(
       row([
         ex.day !== undefined ? String(ex.day) : "",
+        propName,
         ex.description,
+        ex.mode ?? "flat",
+        ex.mode === "per_day" && ex.rateCentsPerDay !== undefined
+          ? formatMoney(ex.rateCentsPerDay, opts)
+          : "",
+        ex.mode === "per_day" && ex.days !== undefined ? String(ex.days) : "",
         formatMoney(ex.amountCents, opts),
       ]),
     );

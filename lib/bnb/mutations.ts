@@ -209,6 +209,21 @@ export function setPropertyMeta(
   return { ...d, settings: { ...d.settings, properties: nextProps } };
 }
 
+export function setPropertyName(data: BnbData, propertyId: string, name: string): BnbData {
+  const d = asV7(data);
+  const trimmed = name.trim();
+  if (!trimmed) return d;
+  return {
+    ...d,
+    settings: {
+      ...d.settings,
+      properties: d.settings.properties.map((p) =>
+        p.id === propertyId ? { ...p, name: trimmed } : p,
+      ),
+    },
+  };
+}
+
 export function setPropertyRent(
   data: BnbData,
   monthId: string,
@@ -235,7 +250,13 @@ export function setPropertyRent(
 export function addExpense(
   data: BnbData,
   monthId: string,
-  input: Pick<ExpenseItem, "description" | "amountCents"> & { day?: number; propertyId?: string },
+  input: Pick<ExpenseItem, "description" | "amountCents"> & {
+    day?: number;
+    propertyId?: string;
+    mode?: "flat" | "per_day";
+    rateCentsPerDay?: number;
+    days?: number;
+  },
 ): BnbData {
   const d = asV5(data);
   const desc = input.description.trim();
@@ -245,10 +266,24 @@ export function addExpense(
     return data;
 
   const t = nowIso();
+  const mode = input.mode ?? "flat";
+  const computedAmount =
+    mode === "per_day"
+      ? (() => {
+          if (!Number.isFinite(input.rateCentsPerDay)) return null;
+          if (!Number.isInteger(input.days) || (input.days ?? 0) < 1) return null;
+          return (input.rateCentsPerDay as number) * (input.days as number);
+        })()
+      : input.amountCents;
+  if (computedAmount === null) return data;
+
   const expense: ExpenseItem = {
     id: newId(),
     description: desc,
-    amountCents: input.amountCents,
+    amountCents: computedAmount,
+    mode,
+    rateCentsPerDay: mode === "per_day" ? input.rateCentsPerDay : undefined,
+    days: mode === "per_day" ? input.days : undefined,
     propertyId: input.propertyId,
     day: input.day,
     createdAt: t,
@@ -267,7 +302,12 @@ export function updateExpense(
   data: BnbData,
   monthId: string,
   expenseId: string,
-  patch: Partial<Pick<ExpenseItem, "description" | "amountCents" | "day" | "propertyId">>,
+  patch: Partial<
+    Pick<
+      ExpenseItem,
+      "description" | "amountCents" | "day" | "propertyId" | "mode" | "rateCentsPerDay" | "days"
+    >
+  >,
 ): BnbData {
   const d = asV5(data);
   const t = nowIso();
@@ -278,11 +318,24 @@ export function updateExpense(
       const next = m.expenses.map((e) => {
         if (e.id !== expenseId) return e;
         const nextDesc = patch.description !== undefined ? patch.description.trim() : e.description;
-        const nextAmount = patch.amountCents !== undefined ? patch.amountCents : e.amountCents;
+        const nextMode = patch.mode !== undefined ? patch.mode : e.mode ?? "flat";
+        const nextRate =
+          patch.rateCentsPerDay !== undefined ? patch.rateCentsPerDay : e.rateCentsPerDay;
+        const nextDays = patch.days !== undefined ? patch.days : e.days;
+        const nextAmount =
+          nextMode === "per_day"
+            ? (() => {
+                if (!Number.isFinite(nextRate)) return null;
+                if (!Number.isInteger(nextDays) || (nextDays ?? 0) < 1) return null;
+                return (nextRate as number) * (nextDays as number);
+              })()
+            : patch.amountCents !== undefined
+              ? patch.amountCents
+              : e.amountCents;
         const nextDay = patch.day !== undefined ? patch.day : e.day;
         const nextProp = patch.propertyId !== undefined ? patch.propertyId : e.propertyId;
         if (!nextDesc) return e;
-        if (!Number.isFinite(nextAmount)) return e;
+        if (nextAmount === null || !Number.isFinite(nextAmount)) return e;
         if (nextDay !== undefined && (!Number.isInteger(nextDay) || nextDay < 1 || nextDay > 31))
           return e;
         return {
@@ -290,6 +343,9 @@ export function updateExpense(
           description: nextDesc,
           amountCents: nextAmount,
           propertyId: nextProp,
+          mode: nextMode,
+          rateCentsPerDay: nextMode === "per_day" ? nextRate : undefined,
+          days: nextMode === "per_day" ? nextDays : undefined,
           day: nextDay,
           updatedAt: t,
         };

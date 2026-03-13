@@ -2,6 +2,9 @@ export type ExpenseItem = {
   id: string;
   description: string;
   amountCents: number;
+  mode?: "flat" | "per_day";
+  rateCentsPerDay?: number;
+  days?: number;
   propertyId?: string;
   day?: number;
   createdAt: string;

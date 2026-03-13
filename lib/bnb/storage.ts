@@ -38,12 +38,18 @@ function isExpenseItem(x: unknown): x is ExpenseItem {
   const o = x as Record<string, unknown>;
   const day = o.day;
   const propertyId = o.propertyId;
+  const mode = o.mode;
+  const rate = o.rateCentsPerDay;
+  const days = o.days;
   return (
     typeof o.id === "string" &&
     typeof o.description === "string" &&
     typeof o.amountCents === "number" &&
     Number.isFinite(o.amountCents) &&
     (propertyId === undefined || typeof propertyId === "string") &&
+    (mode === undefined || mode === "flat" || mode === "per_day") &&
+    (rate === undefined || (typeof rate === "number" && Number.isFinite(rate))) &&
+    (days === undefined || (typeof days === "number" && Number.isInteger(days) && days >= 1)) &&
     (day === undefined ||
       (typeof day === "number" && Number.isInteger(day) && day >= 1 && day <= 31)) &&
     typeof o.createdAt === "string" &&
