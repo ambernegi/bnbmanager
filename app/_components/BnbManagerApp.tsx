@@ -291,8 +291,22 @@ export function BnbManagerApp() {
       <div className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="flex items-start gap-3">
-          <div className="relative h-11 w-11 overflow-hidden rounded-xl ring-1 ring-inset ring-zinc-200 bg-white shadow-sm dark:ring-zinc-800 dark:bg-zinc-950">
-            <Image src="/hostops-logo.png" alt="HostOps logo" fill sizes="44px" className="object-cover" />
+          <div className="relative h-14 w-14 sm:h-16 sm:w-16">
+            <Image
+              src="/hostops-logo.png"
+              alt="HostOps logo"
+              fill
+              priority
+              sizes="(min-width: 640px) 64px, 56px"
+              className="object-contain opacity-90 mix-blend-multiply dark:mix-blend-screen"
+              style={{
+                // Fade the edges so the square PNG blends into the page background.
+                WebkitMaskImage:
+                  "radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)",
+                maskImage:
+                  "radial-gradient(circle at center, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)",
+              }}
+            />
           </div>
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
